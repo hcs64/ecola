@@ -13,18 +13,33 @@ const LEVEL_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
 const OUTLINE_COLORS = ['#e0e0ff', '#ffe0e0', '#e0ffe0'];
 const OUTLINE_GREY = '#808080';
 
-const findIntersectingBox = function ({x, y, first = BOXES.length - 1}) {
+const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
+  if (first === -1) {
+    first = boxes.length - 1;
+  }
   for (let i = first; i >= 0; i --) {
-    const bx = BOXES[i].x;
-    const by = BOXES[i].y;
-    const bxm = BOXES[i].x + BOXES[i].w;
-    const bym = BOXES[i].y + BOXES[i].h;
-    if (x >= bx && x < bxm && y >= by && y < bym) {
-      return BOXES[i];
+    const b = boxes[i];
+    const bxm = b.x + b.w;
+    const bym = b.y + b.h;
+    if (x >= b.x && x < bxm && y >= b.y && y < bym) {
+      for (let ri = b.rows.length - 1; ri >= 0; ri --) {
+        const r = b.rows[ri];
+        const child =
+          findIntersectingBox({x: x - b.x - r.x, y: y - b.y - r.y,
+                               boxes: r.cells});
+        if (child) {
+          return child;
+        }
+      }
+
+      return b;
     }
   }
 
   return null;
+};
+
+const getAbsoluteXY = function () {
 };
 
 const createNewBox = function (p, under = null) {
@@ -33,7 +48,10 @@ const createNewBox = function (p, under = null) {
                   finished: false, rows: [], under, level: 0};
 
   if (under) {
-    // TODO: optionally create new row
+    // TODO: figure out whether to add a row, or add to a row, or
+    // insert into a row
+    //const {ax, ay} = getAbsoluteXY(under);
+
     newBox.level = under.level + 1;
     let targetRow;
     if (under.rows.length === 0) {
@@ -43,6 +61,7 @@ const createNewBox = function (p, under = null) {
       targetRow = under.rows[0];
     }
     targetRow.cells.push(newBox);
+    newBox.rowIdx = under.rows.indexOf(targetRow);
     newBox.idx = targetRow.cells.indexOf(newBox);
     updateRowCells(targetRow);
 
@@ -109,6 +128,11 @@ const updateBoxRows = function (box) {
 
   box.w = w;
   box.h = h + BOX_PAD;
+
+  if (box.under) {
+    updateRowCells(box.under.rows[box.rowIdx]);
+    updateBoxRows(box.under);
+  }
 };
 
 const updateRowCells = function (row) {
