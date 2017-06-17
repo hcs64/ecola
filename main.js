@@ -16,8 +16,10 @@ let HOLD_TIMEOUT2_ID = null;
 let TARGET_BOX = null;
 let TARGET_REGION = null;
 let WARN_HOLD = false;
+let BLAH = null;
 
-const HOLD_TIMEOUT1_MS = 250;
+const TARGET_LINE_WIDTH = 15;
+const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 750;
 const PAN_DIST = 20;
 const BOX_PAD = 30;
@@ -63,6 +65,16 @@ const convertToBoxXY = function (box, x, y) {
     return convertToBoxXY(box.under, x, y);
   }
   return {x: x - box.x, y: y - box.y};
+};
+
+const convertToAbsoluteXY = function (box, x, y) {
+  if (box.under) {
+    const row = box.under.rows[box.rowIdx];
+    x += box.x + row.x;
+    y += box.y + row.y;
+    return convertToAbsoluteXY(box.under, x, y);
+  }
+  return {x: x + box.x, y: y + box.y}
 };
 
 const chooseTarget = function (p, under) {
@@ -283,6 +295,10 @@ const draw = function () {
 
   BOXES.forEach(drawBox);
 
+  if (BLAH) {
+    CNV.drawRect({x: BLAH.x-5, y: BLAH.y-5, w: 10, h: 10, fill: '#000000'});
+  }
+
   CNV.exitRel();
 };
 
@@ -322,13 +338,14 @@ const drawBox = function (box, idx) {
   });
 
   if (box === TARGET_BOX) {
+    CNV.context.lineWidth = TARGET_LINE_WIDTH;
+
     if (WARN_HOLD) {
-      CNV.context.lineWidth = 10;
       CNV.drawRect(
         {x: 0, y: 0, w: box.w, h: box.h, stroke: WARN_COLOR});
     } else {
       const {x,y,w,h} = TARGET_REGION;
-      CNV.drawRect({x,y,w,h, fill: TARGET_COLOR});
+      CNV.drawRect({x,y,w,h, stroke: TARGET_COLOR});
     }
   }
 
@@ -425,12 +442,15 @@ GET_TOUCHY(CNV.element, {
     if (!PANNING) {
       if (TARGET_BOX) {
         NEW_BOX = createNewBox(TOUCH_ORIGIN, TARGET_BOX);
+
+        const {x, y} = convertToAbsoluteXY(NEW_BOX, NEW_BOX.w/2, NEW_BOX.h/2)
+        PAN_TRANSLATE.x += TOUCH_ORIGIN.x - Math.round(x);
+        PAN_TRANSLATE.y += TOUCH_ORIGIN.y - Math.round(y);
+        console.log(TOUCH_ORIGIN.x - Math.round(x),
+                    TOUCH_ORIGIN.y - Math.round(y));
+
         TARGET_BOX = null;
         TARGET_REGION = null;
-
-        // TODO: adjust pan by how much the screen has shifted, to keep the
-        // touch origin centered on what was just added. It will then appear
-        // to be expanding out rather than marching ever right and down.
       }
       if (NEW_BOX) {
         finishNewBox(NEW_BOX, p, cancelled);

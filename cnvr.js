@@ -56,6 +56,7 @@ setup();
 
 return {
   element: cnv,
+  context: ctx,
   clear,
 
   drawRect,
