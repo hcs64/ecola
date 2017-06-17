@@ -7,6 +7,7 @@ const BOXES = [];
 let PANNING = false;
 let PAN_TRANSLATE = {x: 0, y: 0};
 let TEMP_PAN_TRANSLATE = {x: 0, y: 0};
+let LAST_ADDED_BOX = null;
 let NEW_BOX = null;
 let DRAW_REQUEST_IN_FLIGHT = false;
 let TOUCH_ORIGIN = {x: 0, y: 0};
@@ -16,7 +17,7 @@ const BOX_PAD = 30;
 const PAREN_X = 10;
 const PAREN_Y = 10;
 const LEVEL_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
-const OUTLINE_COLORS = ['#e8e8ff', '#ffe8e8', '#e8ffe8'];
+const ROW_COLORS = ['#e8e8ff', '#ffe8e8', '#e8ffe8'];
 const OUTLINE_GREY = '#808080';
 
 const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
@@ -135,32 +136,12 @@ const createNewBox = function (p, under = null) {
   return newBox;
 };
 
-const moveNewBox = function (newBox, p) {
-    //newBox.x = p.x - BOX_PAD;
-    //newBox.y = p.y - BOX_PAD;
-};
-
 const finishNewBox = function (newBox, p, cancelled) {
-    //newBox.x = p.x - BOX_PAD;
-    //newBox.y = p.y - BOX_PAD;
     newBox.finished = true;
 
     if (cancelled) {
       removeBox(newBox);
     }
-
-    // for moving
-    /*
-    if (typeof newBox.properIdx !== 'undefined' &&
-        newBox.properIdx !== newBox.idx) {
-      // shift back into position
-      const proper = newBox.properIdx, idx = newBox.idx;
-      newBox.under.splice(idx, 1);
-      newBox.under.splice(proper, 0, newBox);
-
-      reindexBoxes(box.under);
-    }
-    */
 };
 
 const removeBox = function (box) {
@@ -280,7 +261,7 @@ const drawBox = function (box, idx) {
   const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h,
                      fill: LEVEL_COLORS[box.level % LEVEL_COLORS.length]};
 
-  if (!box.finished) {
+  if (box === LAST_ADDED_BOX) {
     rectAttrs.stroke = OUTLINE_GREY;
   }
 
@@ -303,7 +284,7 @@ const drawBox = function (box, idx) {
   box.rows.forEach(function (row) {
     CNV.enterRel({x: row.x, y: row.y});
     CNV.drawRect({x: 0, y: 0, w: row.w, h: row.h,
-                  fill: OUTLINE_COLORS[box.level % OUTLINE_COLORS.length]});
+                  fill: ROW_COLORS[box.level % ROW_COLORS.length]});
 
     row.cells.forEach(drawBox);
     CNV.exitRel();
@@ -318,17 +299,12 @@ GET_TOUCHY(CNV.element, {
     const target = findIntersectingBox({x: p.x, y: p.y});
 
     if (target) {
-      /*
-      // moving
-      const idx = target.idx;
-      removeBox(target);
-
-      NEW_BOX = createNewBox(p);
-      NEW_BOX.properIdx = idx;
-      */
       NEW_BOX = createNewBox(p, target);
     } else if (!NEW_BOX && BOXES.length === 0) {
       NEW_BOX = createNewBox(p);
+    }
+    if (NEW_BOX) {
+      LAST_ADDED_BOX = NEW_BOX;
     }
 
     TOUCH_ORIGIN = {x: p.x, y: p.y};
@@ -345,9 +321,6 @@ GET_TOUCHY(CNV.element, {
     }
 
     if (NEW_BOX) {
-      /*
-      moveNewBox(NEW_BOX, p);
-      */
       if (PANNING) {
         finishNewBox(NEW_BOX, p, true);
         NEW_BOX = null;
