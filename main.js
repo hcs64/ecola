@@ -439,9 +439,11 @@ GET_TOUCHY(CNV.element, {
         if (!WARN_HOLD) {
           NEW_BOX = createNewBox(TOUCH_ORIGIN, TARGET_BOX);
 
+          /*
           const {x, y} = convertToAbsoluteXY(NEW_BOX, NEW_BOX.w/2, NEW_BOX.h/2)
           PAN_TRANSLATE.x += TOUCH_ORIGIN.x - Math.round(x);
           PAN_TRANSLATE.y += TOUCH_ORIGIN.y - Math.round(y);
+          */
         }
 
         TARGET_BOX = null;
