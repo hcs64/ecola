@@ -3,14 +3,20 @@
 
 const CNV = CNVR();
 const BOXES = [];
+
+let PANNING = false;
+let PAN_TRANSLATE = {x: 0, y: 0};
+let TEMP_PAN_TRANSLATE = {x: 0, y: 0};
 let NEW_BOX = null;
 let DRAW_REQUEST_IN_FLIGHT = false;
+let TOUCH_ORIGIN = {x: 0, y: 0};
 
+const PAN_DIST = 20;
 const BOX_PAD = 30;
 const PAREN_X = 10;
 const PAREN_Y = 10;
 const LEVEL_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
-const OUTLINE_COLORS = ['#e0e0ff', '#ffe0e0', '#e0ffe0'];
+const OUTLINE_COLORS = ['#e8e8ff', '#ffe8e8', '#e8ffe8'];
 const OUTLINE_GREY = '#808080';
 
 const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
@@ -121,6 +127,7 @@ const createNewBox = function (p, under = null) {
     updateRowCells(targetRow);
     updateBoxRows(under);
   } else {
+    // TODO: avoid overlapping with existing boxes
     BOXES.push(newBox);
     newBox.idx = BOXES.indexOf(newBox);
   }
@@ -137,7 +144,10 @@ const finishNewBox = function (newBox, p, cancelled) {
     //newBox.x = p.x - BOX_PAD;
     //newBox.y = p.y - BOX_PAD;
     newBox.finished = true;
-    newBox.cancelled = cancelled;
+
+    if (cancelled) {
+      removeBox(newBox);
+    }
 
     // for moving
     /*
@@ -155,10 +165,29 @@ const finishNewBox = function (newBox, p, cancelled) {
 
 const removeBox = function (box) {
   const idx = box.idx;
-  const removed = box.under.splice(idx, 1)[0];
-  removed.idx = -1;
+  box.idx = -1;
 
-  reindexBoxes(box.under, idx);
+  let removed;
+
+  if (box.under) {
+    const under = box.under;
+    const rowIdx = box.rowIdx;
+    const row = under.rows[rowIdx];
+    const removed = row.cells.splice(idx, 1)[0];
+    box.rowIdx = -1;
+    if (row.cells.length === 0) {
+      under.rows.splice(rowIdx, 1);
+      reindexRows(under.rows);
+    } else {
+      reindexBoxes(row.cells);
+      updateRowCells(row);
+    }
+
+    updateBoxRows(under);
+  } else {
+    removed = BOXES.splice(idx, 1)[0];
+    reindexBoxes();
+  }
 
   return removed;
 };
@@ -181,6 +210,7 @@ const reindexRows = function (rows) {
 const updateBoxRows = function (box) {
   let w = 0;
   let h = 0;
+
   box.rows.forEach(function (row) {
     row.x = 0;
     row.y = BOX_PAD + h;
@@ -189,8 +219,13 @@ const updateBoxRows = function (box) {
     h += row.h + BOX_PAD;
   });
 
-  box.w = w;
-  box.h = h + BOX_PAD;
+  if (box.rows.length === 0) {
+    box.w = BOX_PAD * 2;
+    box.h = BOX_PAD * 2;
+  } else {
+    box.w = w;
+    box.h = h + BOX_PAD;
+  }
 
   if (box.under) {
     updateRowCells(box.under.rows[box.rowIdx]);
@@ -214,6 +249,11 @@ const updateRowCells = function (row) {
   row.h = h;
 };
 
+const adjustForPan = function ({x,y}) {
+  return {x: x - PAN_TRANSLATE.x,
+          y: y - PAN_TRANSLATE.y};
+};
+
 const requestDraw = function () {
   if (!DRAW_REQUEST_IN_FLIGHT) {
     DRAW_REQUEST_IN_FLIGHT = true;
@@ -226,7 +266,12 @@ const draw = function () {
 
   CNV.clear();
 
+  CNV.enterRel({x: PAN_TRANSLATE.x + TEMP_PAN_TRANSLATE.x,
+                y: PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y});
+
   BOXES.forEach(drawBox);
+
+  CNV.exitRel();
 };
 
 const drawBox = function (box, idx) {
@@ -269,6 +314,7 @@ const drawBox = function (box, idx) {
 
 GET_TOUCHY(CNV.element, {
   touchStart (p) {
+    p = adjustForPan(p);
     const target = findIntersectingBox({x: p.x, y: p.y});
 
     if (target) {
@@ -281,24 +327,59 @@ GET_TOUCHY(CNV.element, {
       NEW_BOX.properIdx = idx;
       */
       NEW_BOX = createNewBox(p, target);
-    } else if (!NEW_BOX) {
+    } else if (!NEW_BOX && BOXES.length === 0) {
       NEW_BOX = createNewBox(p);
     }
+
+    TOUCH_ORIGIN = {x: p.x, y: p.y};
 
     requestDraw();
   },
   touchMove (p) {
-    if (NEW_BOX) {
-      moveNewBox(NEW_BOX, p);
-      requestDraw();
+    p = adjustForPan(p);
+    const dist = Math.sqrt(
+      Math.pow(TOUCH_ORIGIN.x - p.x, 2) + Math.pow(TOUCH_ORIGIN.y - p.y, 2));
+
+    if (!PANNING && dist >= PAN_DIST) {
+      PANNING = true;
     }
+
+    if (NEW_BOX) {
+      /*
+      moveNewBox(NEW_BOX, p);
+      */
+      if (PANNING) {
+        finishNewBox(NEW_BOX, p, true);
+        NEW_BOX = null;
+      }
+    }
+
+    if (PANNING) {
+      TEMP_PAN_TRANSLATE.x = p.x - TOUCH_ORIGIN.x;
+      TEMP_PAN_TRANSLATE.y = p.y - TOUCH_ORIGIN.y;
+    }
+    requestDraw();
   },
   touchEnd (p, cancelled) {
+    p = adjustForPan(p);
     if (NEW_BOX) {
       finishNewBox(NEW_BOX, p, cancelled);
-      requestDraw();
       NEW_BOX = null;
     }
+
+    if (PANNING) {
+      TEMP_PAN_TRANSLATE.x = p.x - TOUCH_ORIGIN.x;
+      TEMP_PAN_TRANSLATE.y = p.y - TOUCH_ORIGIN.y;
+
+      PAN_TRANSLATE.x += TEMP_PAN_TRANSLATE.x;
+      PAN_TRANSLATE.y += TEMP_PAN_TRANSLATE.y;
+
+      TEMP_PAN_TRANSLATE.x = 0;
+      TEMP_PAN_TRANSLATE.y = 0;
+
+      PANNING = false;
+    }
+    requestDraw();
   },
 });
 
