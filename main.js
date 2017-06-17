@@ -11,7 +11,9 @@ let LAST_ADDED_BOX = null;
 let NEW_BOX = null;
 let DRAW_REQUEST_IN_FLIGHT = false;
 let TOUCH_ORIGIN = {x: 0, y: 0};
+let HOLD_TIMEOUT_ID = null;
 
+const HOLD_TIMEOUT_MS = 750;
 const PAN_DIST = 20;
 const BOX_PAD = 30;
 const PAREN_X = 10;
@@ -293,6 +295,25 @@ const drawBox = function (box, idx) {
   CNV.exitRel();
 };
 
+const startHoldTimeout = function () {
+  HOLD_TIMEOUT_ID = window.setTimeout(handleHoldTimeout, HOLD_TIMEOUT_MS);
+};
+
+const cancelHoldTimeout = function () {
+  if (typeof HOLD_TIMEOUT_ID === 'number') {
+    clearTimeout(HOLD_TIMEOUT_ID)
+    HOLD_TIMEOUT_ID =   null;
+  }
+};
+
+const handleHoldTimeout = function () {
+  console.log('hit timeout');
+  const target = findIntersectingBox(TOUCH_ORIGIN);
+
+  removeBox(target);
+  requestDraw();
+};
+
 GET_TOUCHY(CNV.element, {
   touchStart (p) {
     p = adjustForPan(p);
@@ -306,6 +327,8 @@ GET_TOUCHY(CNV.element, {
 
     TOUCH_ORIGIN = {x: p.x, y: p.y};
 
+    startHoldTimeout();
+
     requestDraw();
   },
   touchMove (p) {
@@ -315,6 +338,7 @@ GET_TOUCHY(CNV.element, {
 
     if (!PANNING && dist >= PAN_DIST) {
       PANNING = true;
+      cancelHoldTimeout();
     }
 
     if (NEW_BOX) {
@@ -352,6 +376,7 @@ GET_TOUCHY(CNV.element, {
 
       PANNING = false;
     }
+    cancelHoldTimeout();
     requestDraw();
   },
 });
