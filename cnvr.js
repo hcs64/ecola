@@ -6,13 +6,17 @@ const CNVR = function () {
 let cnv = null;
 let ctx = null;
 
-const setup = function () {
+const makeCanvas = function () {
   cnv = document.createElement('canvas');
   document.body.appendChild(cnv);
-  cnv.width = window.innerWidth;
-  cnv.height = window.innerHeight;
   ctx = cnv.getContext('2d');
 
+ setupCanvas();
+};
+
+const setupCanvas = function () {
+  cnv.width = window.innerWidth;
+  cnv.height = window.innerHeight;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '18px Arial';
@@ -52,9 +56,11 @@ const exitRel = function () {
   ctx.restore();
 };
 
-setup();
+makeCanvas();
 
 return {
+  setupCanvas,
+
   element: cnv,
   context: ctx,
   clear,

@@ -16,7 +16,6 @@ let HOLD_TIMEOUT2_ID = null;
 let TARGET_BOX = null;
 let TARGET_REGION = null;
 let WARN_HOLD = false;
-let BLAH = null;
 
 const TARGET_LINE_WIDTH = 15;
 const HOLD_TIMEOUT1_MS = 500;
@@ -295,10 +294,6 @@ const draw = function () {
 
   BOXES.forEach(drawBox);
 
-  if (BLAH) {
-    CNV.drawRect({x: BLAH.x-5, y: BLAH.y-5, w: 10, h: 10, fill: '#000000'});
-  }
-
   CNV.exitRel();
 };
 
@@ -441,13 +436,13 @@ GET_TOUCHY(CNV.element, {
     p = adjustForPan(p);
     if (!PANNING) {
       if (TARGET_BOX) {
-        NEW_BOX = createNewBox(TOUCH_ORIGIN, TARGET_BOX);
+        if (!WARN_HOLD) {
+          NEW_BOX = createNewBox(TOUCH_ORIGIN, TARGET_BOX);
 
-        const {x, y} = convertToAbsoluteXY(NEW_BOX, NEW_BOX.w/2, NEW_BOX.h/2)
-        PAN_TRANSLATE.x += TOUCH_ORIGIN.x - Math.round(x);
-        PAN_TRANSLATE.y += TOUCH_ORIGIN.y - Math.round(y);
-        console.log(TOUCH_ORIGIN.x - Math.round(x),
-                    TOUCH_ORIGIN.y - Math.round(y));
+          const {x, y} = convertToAbsoluteXY(NEW_BOX, NEW_BOX.w/2, NEW_BOX.h/2)
+          PAN_TRANSLATE.x += TOUCH_ORIGIN.x - Math.round(x);
+          PAN_TRANSLATE.y += TOUCH_ORIGIN.y - Math.round(y);
+        }
 
         TARGET_BOX = null;
         TARGET_REGION = null;
@@ -475,6 +470,11 @@ GET_TOUCHY(CNV.element, {
     cancelHoldTimeout();
     requestDraw();
   },
+});
+
+window.addEventListener('resize', function () {
+  CNV.setupCanvas();
+  requestDraw();
 });
 
 })();
