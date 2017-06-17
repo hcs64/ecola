@@ -325,7 +325,7 @@ const drawBox = function (box, idx) {
 
   box.rows.forEach(function (row) {
     CNV.enterRel({x: row.x, y: row.y});
-    CNV.drawRect({x: 0, y: 0, w: row.w, h: row.h,
+    CNV.drawRect({x: 0, y: 0, w: box.w, h: row.h,
                   fill: ROW_COLORS[box.level % ROW_COLORS.length]});
 
     row.cells.forEach(drawBox);
