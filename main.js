@@ -261,7 +261,7 @@ const drawBox = function (box, idx) {
   const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h,
                      fill: LEVEL_COLORS[box.level % LEVEL_COLORS.length]};
 
-  if (box === LAST_ADDED_BOX) {
+  if (!NEW_BOX && box === LAST_ADDED_BOX) {
     rectAttrs.stroke = OUTLINE_GREY;
   }
 
@@ -303,9 +303,6 @@ GET_TOUCHY(CNV.element, {
     } else if (!NEW_BOX && BOXES.length === 0) {
       NEW_BOX = createNewBox(p);
     }
-    if (NEW_BOX) {
-      LAST_ADDED_BOX = NEW_BOX;
-    }
 
     TOUCH_ORIGIN = {x: p.x, y: p.y};
 
@@ -337,6 +334,9 @@ GET_TOUCHY(CNV.element, {
     p = adjustForPan(p);
     if (NEW_BOX) {
       finishNewBox(NEW_BOX, p, cancelled);
+      if (!cancelled) {
+        LAST_ADDED_BOX = NEW_BOX;
+      }
       NEW_BOX = null;
     }
 
