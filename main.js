@@ -6,7 +6,7 @@ const BOXES = [];
 let NEW_BOX = null;
 let DRAW_REQUEST_IN_FLIGHT = false;
 
-const BOX_PAD = 40;
+const BOX_PAD = 30;
 const PAREN_X = 10;
 const PAREN_Y = 10;
 const LEVEL_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
@@ -39,7 +39,14 @@ const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
   return null;
 };
 
-const getAbsoluteXY = function () {
+const convertToBoxXY = function (box, x, y) {
+  if (box.under) {
+    const row = box.under.rows[box.rowIdx];
+    x -= box.x + row.x;
+    y -= box.y + row.y;
+    return convertToBoxXY(box.under, x, y);
+  }
+  return {x: x - box.x, y: y - box.y};
 };
 
 const createNewBox = function (p, under = null) {
@@ -48,23 +55,70 @@ const createNewBox = function (p, under = null) {
                   finished: false, rows: [], under, level: 0};
 
   if (under) {
-    // TODO: figure out whether to add a row, or add to a row, or
-    // insert into a row
-    //const {ax, ay} = getAbsoluteXY(under);
-
     newBox.level = under.level + 1;
-    let targetRow;
-    if (under.rows.length === 0) {
-      targetRow = {cells: []};
-      under.rows.push(targetRow);
-    } else {
-      targetRow = under.rows[0];
-    }
-    targetRow.cells.push(newBox);
-    newBox.rowIdx = under.rows.indexOf(targetRow);
-    newBox.idx = targetRow.cells.indexOf(newBox);
-    updateRowCells(targetRow);
+    let targetRow = null;
+    let targetRowIdx = -1;
+    let targetIdx = -1;
 
+    const {x: lx, y: ly} = convertToBoxXY(under, p.x, p.y);
+
+    if (under.rows.length === 0 || ly < under.rows[0].y) {
+      // add new row to top
+      targetRowIdx = 0;
+      targetIdx = 0;
+    } else {
+      for (let ri = 0; ri < under.rows.length; ri ++) {
+        const row = under.rows[ri];
+        if (ly >= row.y && ly < row.y + row.h) {
+          // add to existing row
+          targetRow = row;
+          targetRowIdx = ri;
+
+          if (row.cells.length === 0 || lx < row.cells[0].x) {
+            // add at start of row
+            targetIdx = 0;
+          } else {
+            for (let i = 0; i < row.cells.length - 1; i ++) {
+              const cell = row.cells[i];
+              const nextCell = row.cells[i+1];
+              if (lx >= cell.x + cell.w && lx < nextCell.x) {
+                // add between cells
+                targetIdx = i+1;
+                break;
+              }
+            }
+
+            if (targetIdx === -1) {
+              // add at end of row
+              targetIdx = row.cells.length;
+            }
+          }
+          break;
+        } else if (ri < under.rows.length - 1) {
+          const nextRow = under.rows[ri+1];
+          if (ly >= row.y + row.h && ly < nextRow.y) {
+            // add new row in the middle
+            targetRowIdx = ri + 1;
+            targetIdx = 0;
+            break;
+          }
+        }
+      }
+      if (targetRowIdx === -1) {
+        // add new row to bottom
+        targetRowIdx = under.rows.length;
+        targetIdx = 0;
+      }
+    }
+
+    if (!targetRow) {
+      targetRow = {cells: []};
+      under.rows.splice(targetRowIdx, 0, targetRow);
+    }
+    targetRow.cells.splice(targetIdx, 0, newBox);
+
+    reindexRows(under.rows);
+    updateRowCells(targetRow);
     updateBoxRows(under);
   } else {
     BOXES.push(newBox);
@@ -110,8 +164,17 @@ const removeBox = function (box) {
 };
 
 const reindexBoxes = function (list = BOXES, first = 0) {
-  for (let i = first; i < list.length; i++) {
+  for (let i = first; i < list.length; i ++) {
     list[i].idx = i;
+  }
+};
+
+const reindexRows = function (rows) {
+  for (let i = 0; i < rows.length; i ++) {
+    for (let j = 0; j < rows[i].cells.length; j ++) {
+      rows[i].cells[j].idx = j;
+      rows[i].cells[j].rowIdx = i;
+    }
   }
 };
 
