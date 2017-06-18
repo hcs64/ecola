@@ -15,6 +15,7 @@ let HOLD_TIMEOUT2_ID;
 let TARGET_BOX;
 let TARGET_REGION;
 let WARN_HOLD;
+let SAVE_HASH;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -33,6 +34,7 @@ const resetGlobals = function () {
   TARGET_BOX = null;
   TARGET_REGION = null;
   WARN_HOLD = false;
+  SAVE_HASH = '#';
 };
 
 const TARGET_LINE_WIDTH = 15;
@@ -191,8 +193,6 @@ const createNewBox = function (p, under = null) {
     newBox.idx = BOXES.indexOf(newBox);
   }
 
-  updateSaveHash();
-
   return newBox;
 };
 
@@ -221,8 +221,6 @@ const removeBox = function (box) {
     removed = BOXES.splice(idx, 1)[0];
     reindexBoxes();
   }
-
-  updateSaveHash();
 
   return removed;
 };
@@ -473,6 +471,8 @@ const loadFromHash = function () {
         BOXES = [box];
         reindexBoxes();
 
+        updateSaveHash();
+
         requestDraw();
       }
     }
@@ -498,10 +498,9 @@ const updateSaveHash = function () {
   let str = '';
   if (BOXES.length > 0) {
     str = stringFromBox(BOXES[0]);
-
   }
 
-  document.getElementById('save-link').href = '#' + str;
+  SAVE_HASH = '#' + str;
 };
 
 
@@ -509,7 +508,6 @@ const updateSaveHash = function () {
 
 resetGlobals();
 loadFromHash();
-updateSaveHash();
 
 GET_TOUCHY(CNV.element, {
   touchStart (p) {
@@ -595,6 +593,19 @@ GET_TOUCHY(CNV.element, {
 window.addEventListener('resize', function () {
   CNV.setupCanvas();
   requestDraw();
+});
+
+window.addEventListener('hashchange', function () {
+  updateSaveHash();
+  if (window.location.hash !== SAVE_HASH) {
+    loadFromHash();
+  }
+});
+
+document.getElementById('save-link').addEventListener('click', function (e) {
+  updateSaveHash();
+  window.history.replaceState(undefined, undefined, SAVE_HASH);
+  e.preventDefault();
 });
 
 })();
