@@ -66,10 +66,10 @@ const handleTouchStart = function (e) {
   e.preventDefault();
   e.stopPropagation();
 
-  for (const t of e.changedTouches) {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
     startTouch(t.pageX, t.pageY, t.identifier);
   }
-
 };
 
 const handleMouseDown = function (e) {
@@ -87,9 +87,12 @@ const handleTouchMove = function (e) {
   e.preventDefault();
   e.stopPropagation();
 
-  for (const t of e.changedTouches) {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
     const idx = touchIdx(t.identifier);
-    if (idx === -1) continue;
+    if (idx === -1) {
+      continue;
+    }
 
     updateTouch(idx, t.pageX, t.pageY);
   }
@@ -112,11 +115,12 @@ const handleTouchEnd = function (e) {
   e.preventDefault();
   e.stopPropagation();
 
-  const touches = e.changedTouches;
-
-  for (const t of e.changedTouches) {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
     const idx = touchIdx(t.identifier);
-    if (idx === -1) continue;
+    if (idx === -1) {
+      continue;
+    }
 
     endTouch(idx, t.pageX, t.pageY);
   }
@@ -142,9 +146,12 @@ const handleMouseUp = function (e) {
 const handleTouchCancel = function (e) {
   const touches = e.changedTouches;
 
-  for (const t of e.changedTouches) {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
     const idx = touchIdx(t.identifier);
-    if (idx === -1) continue;
+    if (idx === -1) {
+      continue;
+    }
 
     endTouch(idx, t.pageX, t.pageY);
   }
