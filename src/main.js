@@ -22,9 +22,9 @@ const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
 const BOX_PAD = 30;
-const LEVEL_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
-const ROW_COLORS = ['#e8e8ff', '#ffe4e4', '#e0ffe0'];
-const LAST_ADDED_COLOR = '#808080';
+const ROW_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
+const LEVEL_COLORS = ['#e8e8ff', '#ffe8e8', '#e0ffe0'];
+const LAST_ADDED_COLOR = '#c0c0c0';
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 
