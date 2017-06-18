@@ -191,7 +191,7 @@ const createNewBox = function (p, under = null) {
     newBox.idx = BOXES.indexOf(newBox);
   }
 
-  updateHash();
+  updateSaveHash();
 
   return newBox;
 };
@@ -222,7 +222,7 @@ const removeBox = function (box) {
     reindexBoxes();
   }
 
-  updateHash();
+  updateSaveHash();
 
   return removed;
 };
@@ -464,10 +464,9 @@ const loadFromHash = function () {
       console.log('boxFromString threw ' + e);
     }
     if (box) {
-      // TODO: resetGlobals is probably going to leak like crazy
       resetGlobals();
       if (i !== window.location.hash.length) {
-        console.log('trailing characters')
+        console.log('hash error: trailing characters')
       } else {
         box.x = BOX_PAD;
         box.y = BOX_PAD;
@@ -495,14 +494,14 @@ const stringFromBox = function (box) {
   return str + ')';
 };
 
-const updateHash = function () {
+const updateSaveHash = function () {
   let str = '';
   if (BOXES.length > 0) {
     str = stringFromBox(BOXES[0]);
 
   }
 
-  window.history.replaceState(undefined, undefined, '#' + str);
+  document.getElementById('save-link').href = '#' + str;
 };
 
 
@@ -510,6 +509,7 @@ const updateHash = function () {
 
 resetGlobals();
 loadFromHash();
+updateSaveHash();
 
 GET_TOUCHY(CNV.element, {
   touchStart (p) {
@@ -595,10 +595,6 @@ GET_TOUCHY(CNV.element, {
 window.addEventListener('resize', function () {
   CNV.setupCanvas();
   requestDraw();
-});
-
-window.addEventListener('hashchange', function () {
-  loadFromHash();
 });
 
 })();
