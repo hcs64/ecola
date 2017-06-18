@@ -22,8 +22,6 @@ const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
 const BOX_PAD = 30;
-const PAREN_X = 10;
-const PAREN_Y = 14;
 const LEVEL_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
 const ROW_COLORS = ['#e8e8ff', '#ffe4e4', '#e0ffe0'];
 const LAST_ADDED_COLOR = '#808080';
@@ -308,20 +306,6 @@ const drawBox = function (box, idx) {
   }
 
   CNV.drawRect(rectAttrs);
-
-  const openParenAttrs = {x: PAREN_X, y: box.h/2,
-                          msg: '(', fill: '#000000'};
- 
-  const closeParenAttrs = {x: box.w - 1 - PAREN_X, y: box.h/2,
-                           msg: ')', fill: '#000000'}
-
-  if (box.rows.length > 0) {
-    openParenAttrs.y = PAREN_Y;
-    closeParenAttrs.y = box.h - PAREN_Y;
-  }
-
-  CNV.drawText(openParenAttrs);
-  CNV.drawText(closeParenAttrs);
 
   box.rows.forEach(function (row) {
     CNV.enterRel({x: row.x, y: row.y});
