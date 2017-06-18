@@ -1,0 +1,16 @@
+{
+  "name": "ecola",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "babel src -d lib"
+  },
+  "files": [
+    "main.js",
+    "cnvr.js",
+    "touchy.js"
+  ],
+  "devDependencies": {
+    "babel-cli": "^6.24.1",
+    "babel-preset-env": "^1.5.2"
+  }
+}
