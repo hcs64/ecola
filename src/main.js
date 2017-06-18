@@ -19,7 +19,7 @@ let WARN_HOLD = false;
 
 const TARGET_LINE_WIDTH = 15;
 const HOLD_TIMEOUT1_MS = 500;
-const HOLD_TIMEOUT2_MS = 750;
+const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
 const BOX_PAD = 30;
 const PAREN_X = 10;
