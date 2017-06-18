@@ -2,20 +2,40 @@
 'use strict';
 
 const CNV = CNVR();
-const BOXES = [];
 
-let PANNING = false;
-let PAN_TRANSLATE = {x: 0, y: 0};
-let TEMP_PAN_TRANSLATE = {x: 0, y: 0};
-let LAST_ADDED_BOX = null;
-let NEW_BOX = null;
-let DRAW_REQUEST_IN_FLIGHT = false;
-let TOUCH_ORIGIN = {x: 0, y: 0};
-let HOLD_TIMEOUT1_ID = null;
-let HOLD_TIMEOUT2_ID = null;
-let TARGET_BOX = null;
-let TARGET_REGION = null;
-let WARN_HOLD = false;
+let BOXES;
+let PANNING;
+let PAN_TRANSLATE;
+let TEMP_PAN_TRANSLATE;
+let LAST_ADDED_BOX;
+let NEW_BOX;
+let DRAW_REQUEST_IN_FLIGHT;
+let TOUCH_ORIGIN;
+let HOLD_TIMEOUT1_ID;
+let HOLD_TIMEOUT2_ID;
+let TARGET_BOX;
+let TARGET_REGION;
+let WARN_HOLD;
+
+const resetGlobals = function () {
+  BOXES = [];
+  PANNING = false;
+  PAN_TRANSLATE = {x: 0, y: 0};
+  TEMP_PAN_TRANSLATE = {x: 0, y: 0};
+  LAST_ADDED_BOX = null;
+  NEW_BOX = null;
+  if (DRAW_REQUEST_IN_FLIGHT) {
+    window.cancelAnimationFrame(DRAW_REQUEST_IN_FLIGHT);
+  }
+  DRAW_REQUEST_IN_FLIGHT = false;
+  TOUCH_ORIGIN = {x: 0, y: 0};
+  cancelHoldTimeout();
+  HOLD_TIMEOUT1_ID = null;
+  HOLD_TIMEOUT2_ID = null;
+  TARGET_BOX = null;
+  TARGET_REGION = null;
+  WARN_HOLD = false;
+};
 
 const TARGET_LINE_WIDTH = 15;
 const HOLD_TIMEOUT1_MS = 500;
@@ -152,7 +172,7 @@ const chooseTarget = function (p, under) {
 const createNewBox = function (p, under = null) {
   const newBox = {x: p.x - BOX_PAD, y: p.y - BOX_PAD,
                   w: BOX_PAD*2, h: BOX_PAD*2,
-                  finished: false, rows: [], under, level: 0};
+                  rows: [], under, level: 0};
 
   if (under) {
     newBox.level = under.level + 1;
@@ -177,10 +197,10 @@ const createNewBox = function (p, under = null) {
 };
 
 const finishNewBox = function (newBox, p, cancelled) {
-    newBox.finished = true;
-
     if (cancelled) {
       removeBox(newBox);
+    } else {
+      updateHash();
     }
 };
 
@@ -210,6 +230,8 @@ const removeBox = function (box) {
     reindexBoxes();
   }
 
+  updateHash();
+
   return removed;
 };
 
@@ -229,6 +251,11 @@ const reindexRows = function (rows) {
 };
 
 const updateBoxRows = function (box) {
+  // Set size and position for the rows of this box based on the sizes
+  // of the boxes they contain, then set the size of this box from that.
+  // Also calls up to update the parent box since this box's size could
+  // have changed (updateRowCells on the row this box is in and updateBoxRows
+  // on the parent box)
   let w = 0;
   let h = 0;
 
@@ -255,6 +282,8 @@ const updateBoxRows = function (box) {
 };
 
 const updateRowCells = function (row) {
+  // Set the position of each cell (box) based on the size of previous boxes,
+  // and update the size of the row.
   let h = 0;
   let w = BOX_PAD;
 
@@ -277,8 +306,7 @@ const adjustForPan = function ({x,y}) {
 
 const requestDraw = function () {
   if (!DRAW_REQUEST_IN_FLIGHT) {
-    DRAW_REQUEST_IN_FLIGHT = true;
-    window.requestAnimationFrame(draw);
+    DRAW_REQUEST_IN_FLIGHT = window.requestAnimationFrame(draw);
   }
 };
 
@@ -367,6 +395,117 @@ const handleHoldTimeout2 = function () {
     requestDraw();
   }
 };
+
+const boxFromString = function (str, level, i) {
+  if (i >= str.length || str[i] !== '(') {
+    throw 'missing (';
+  }
+  i++;
+
+  const box = {rows:[], level};
+  let curRow = null;
+
+  while (i < str.length) {
+    switch (str[i]) {
+      case ')':
+        i++;
+        if (curRow && curRow.cells.length === 0) {
+          throw 'empty last row';
+        }
+        if (box.rows.length === 0) {
+          // size of an empty box
+          box.w = BOX_PAD * 2;
+          box.h = BOX_PAD * 2;
+        } else {
+          // row and cell indexes
+          reindexRows(box.rows);
+          // set sizes of rows and relative position of children
+          box.rows.forEach(updateRowCells);
+          // set positions of rows and size of this box,
+          // won't call up as box.under isn't set yet
+          updateBoxRows(box);
+        }
+        return {box, i};
+      case ',':
+        i++;
+        if (curRow === null) {
+          throw ', without previous row';
+        } else if (curRow.cells.length === 0) {
+          throw 'empty row';
+        }
+        curRow = {cells: []};
+        box.rows.push(curRow);
+        break;
+      case '(':
+        if (!curRow) {
+          curRow = {cells: []};
+          box.rows.push(curRow);
+        }
+        let childBox;
+        ({box: childBox, i} = boxFromString(str, level + 1, i));
+        childBox.under = box;
+        curRow.cells.push(childBox);
+        break;
+    }
+  }
+
+  throw 'unexpected end of string';
+};
+const loadFromHash = function () {
+  if (/^#[(),]+$/.test(window.location.hash)) {
+    let box = null;
+    let i = 1;
+    try {
+      ({i, box} = boxFromString(window.location.hash, 0, i));
+    } catch (e) {
+      console.log('boxFromString threw ' + e);
+    }
+    if (box) {
+      resetGlobals();
+      if (i !== window.location.hash.length) {
+        console.log('trailing characters')
+      } else {
+        box.x = BOX_PAD;
+        box.y = BOX_PAD;
+        BOXES = [box];
+        reindexBoxes();
+
+        requestDraw();
+      }
+    }
+  }
+};
+
+const stringFromBox = function (box) {
+  let str = '(';
+
+  box.rows.forEach(function (row, rowIdx) {
+    if (rowIdx !== 0) {
+      str += ',';
+    }
+    row.cells.forEach(function (cell) {
+      str += stringFromBox(cell);
+    });
+  });
+
+  return str + ')';
+};
+
+const updateHash = function () {
+  let str = '';
+  if (BOXES.length > 0) {
+    str = stringFromBox(BOXES[0]);
+
+  }
+
+  window.history.replaceState(undefined, undefined, '#' + str);
+};
+
+
+// main code starts here
+
+resetGlobals();
+loadFromHash();
 
 GET_TOUCHY(CNV.element, {
   touchStart (p) {
@@ -461,6 +600,10 @@ GET_TOUCHY(CNV.element, {
 window.addEventListener('resize', function () {
   CNV.setupCanvas();
   requestDraw();
+});
+
+window.addEventListener('hashchange', function () {
+  loadFromHash();
 });
 
 })();
