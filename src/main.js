@@ -8,7 +8,6 @@ let PANNING;
 let PAN_TRANSLATE;
 let TEMP_PAN_TRANSLATE;
 let LAST_ADDED_BOX;
-let NEW_BOX;
 let DRAW_REQUEST_IN_FLIGHT;
 let TOUCH_ORIGIN;
 let HOLD_TIMEOUT1_ID;
@@ -23,7 +22,6 @@ const resetGlobals = function () {
   PAN_TRANSLATE = {x: 0, y: 0};
   TEMP_PAN_TRANSLATE = {x: 0, y: 0};
   LAST_ADDED_BOX = null;
-  NEW_BOX = null;
   if (DRAW_REQUEST_IN_FLIGHT) {
     window.cancelAnimationFrame(DRAW_REQUEST_IN_FLIGHT);
   }
@@ -193,15 +191,9 @@ const createNewBox = function (p, under = null) {
     newBox.idx = BOXES.indexOf(newBox);
   }
 
-  return newBox;
-};
+  updateHash();
 
-const finishNewBox = function (newBox, p, cancelled) {
-    if (cancelled) {
-      removeBox(newBox);
-    } else {
-      updateHash();
-    }
+  return newBox;
 };
 
 const removeBox = function (box) {
@@ -329,7 +321,7 @@ const drawBox = function (box, idx) {
   const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h,
                      fill: LEVEL_COLORS[box.level % LEVEL_COLORS.length]};
 
-  if (!NEW_BOX && !TARGET_BOX && box === LAST_ADDED_BOX) {
+  if (!TARGET_BOX && box === LAST_ADDED_BOX) {
     rectAttrs.stroke = LAST_ADDED_COLOR;
   }
 
@@ -357,6 +349,17 @@ const drawBox = function (box, idx) {
   }
 
   CNV.exitRel();
+};
+
+const rePan = function () {
+  //const {x, y} = convertToAbsoluteXY(newBox, newBox.w/2, newBox.h/2)
+  //PAN_TRANSLATE.x += TOUCH_ORIGIN.x - Math.round(x);
+  //PAN_TRANSLATE.y += TOUCH_ORIGIN.y - Math.round(y);
+  //const {x, y} = convertToAbsoluteXY(TARGET_BOX,
+  //  TARGET_REGION.x + TARGET_REGION.w/2,
+  //  TARGET_REGION.y + TARGET_REGION.h/2);
+  //PAN_TRANSLATE.x += Math.round(TOUCH_ORIGIN.x - x);
+  //PAN_TRANSLATE.y += Math.round(TOUCH_ORIGIN.y - y);
 };
 
 const startHoldTimeout1 = function () {
@@ -461,6 +464,7 @@ const loadFromHash = function () {
       console.log('boxFromString threw ' + e);
     }
     if (box) {
+      // TODO: resetGlobals is probably going to leak like crazy
       resetGlobals();
       if (i !== window.location.hash.length) {
         console.log('trailing characters')
@@ -512,16 +516,11 @@ GET_TOUCHY(CNV.element, {
     p = adjustForPan(p);
     TOUCH_ORIGIN = {x: p.x, y: p.y};
 
-    if (!NEW_BOX) {
-      TARGET_BOX = findIntersectingBox({x: p.x, y: p.y});
+    TARGET_BOX = findIntersectingBox({x: p.x, y: p.y});
 
-
-      if (TARGET_BOX) {
-        ({region: TARGET_REGION} = chooseTarget(p, TARGET_BOX));
-        startHoldTimeout1();
-      } else if (BOXES.length === 0) {
-        NEW_BOX = createNewBox(p);
-      }
+    if (TARGET_BOX) {
+      ({region: TARGET_REGION} = chooseTarget(p, TARGET_BOX));
+      startHoldTimeout1();
     }
 
     requestDraw();
@@ -536,12 +535,6 @@ GET_TOUCHY(CNV.element, {
       cancelHoldTimeout();
     }
 
-    if (NEW_BOX) {
-      if (PANNING) {
-        finishNewBox(NEW_BOX, p, true);
-        NEW_BOX = null;
-      }
-    }
     if (TARGET_BOX) {
       if (PANNING) {
         TARGET_BOX = null;
@@ -557,30 +550,7 @@ GET_TOUCHY(CNV.element, {
   },
   touchEnd (p, cancelled) {
     p = adjustForPan(p);
-    if (!PANNING) {
-      if (TARGET_BOX) {
-        if (!WARN_HOLD) {
-          NEW_BOX = createNewBox(TOUCH_ORIGIN, TARGET_BOX);
-
-          /*
-          const {x, y} = convertToAbsoluteXY(NEW_BOX, NEW_BOX.w/2, NEW_BOX.h/2)
-          PAN_TRANSLATE.x += TOUCH_ORIGIN.x - Math.round(x);
-          PAN_TRANSLATE.y += TOUCH_ORIGIN.y - Math.round(y);
-          */
-        }
-
-        TARGET_BOX = null;
-        TARGET_REGION = null;
-      }
-      if (NEW_BOX) {
-        finishNewBox(NEW_BOX, p, cancelled);
-        if (!cancelled) {
-          LAST_ADDED_BOX = NEW_BOX;
-        }
-        NEW_BOX = null;
-      }
-
-    } else {
+    if (PANNING) {
       TEMP_PAN_TRANSLATE.x = p.x - TOUCH_ORIGIN.x;
       TEMP_PAN_TRANSLATE.y = p.y - TOUCH_ORIGIN.y;
 
@@ -591,7 +561,32 @@ GET_TOUCHY(CNV.element, {
       TEMP_PAN_TRANSLATE.y = 0;
 
       PANNING = false;
+    } else if (WARN_HOLD) {
+      //
+    } else {
+      let newBox;
+      if (TARGET_BOX) {
+        newBox = createNewBox(TOUCH_ORIGIN, TARGET_BOX);
+
+        rePan();
+
+      } else if (BOXES.length === 0) {
+        if (!WARN_HOLD) {
+          newBox = createNewBox(TOUCH_ORIGIN);
+        }
+      }
+
+      if (!!newBox) {
+        if (!cancelled) {
+          LAST_ADDED_BOX = newBox;
+        }
+      }
+
     }
+
+    TARGET_BOX = null;
+    TARGET_REGION = null;
+
     cancelHoldTimeout();
     requestDraw();
   },
