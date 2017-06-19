@@ -493,15 +493,21 @@ const boxFromString = function (str, level, i) {
   throw 'unexpected end of string';
 };
 const loadFromHash = function () {
-  const hash = window.location.hash;
-
+  let hash = window.location.hash;
   if (typeof hash === 'string' && hash.length > 1 && hash[0] === '#') {
+    try {
+      hash = decodeURIComponent(hash.substring(1));
+    } catch (e) {
+      console.log('decodeURIComponent failed');
+      return;
+    }
     let box = null;
-    let i = 1;
+    let i = 0;
     try {
       ({i, box} = boxFromString(hash, 0, i));
     } catch (e) {
       console.log('boxFromString threw ' + e);
+      return;
     }
     if (box) {
       resetGlobals();
@@ -562,7 +568,7 @@ const updateSaveHash = function () {
     str = stringFromBox(BOXES[0]);
   }
 
-  SAVE_HASH = '#' + str;
+  SAVE_HASH = '#' + encodeURIComponent(str);
 };
 
 
