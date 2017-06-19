@@ -57,6 +57,24 @@ const ROW_SYM = ',';
 const ID_SYM = "'";
 const ESC_SYM = '~';
 
+/*
+  box properties
+
+  under
+  x, y: relative to row if under exists, else absolute
+  w, h
+  level: >= 0
+  rows[x]: {
+    x, y: relative to under
+    w, h
+    cells[x]: box
+  }
+  rows[] will exist but could be empty, rows[].cells[] cannot be empty
+  idx: index in whatever array this box is in (currently cells or BOXES)
+  rowIdx: row within under, in this case idx is the index in cells
+  text
+*/
+
 const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
   if (first === -1) {
     first = boxes.length - 1;
@@ -219,7 +237,7 @@ const removeBox = function (box) {
     const under = box.under;
     const rowIdx = box.rowIdx;
     const row = under.rows[rowIdx];
-    const removed = row.cells.splice(idx, 1)[0];
+    removed = row.cells.splice(idx, 1)[0];
     box.rowIdx = -1;
     if (row.cells.length === 0) {
       under.rows.splice(rowIdx, 1);
@@ -253,12 +271,16 @@ const reindexRows = function (rows) {
   }
 };
 
-const updateBoxRows = function (box) {
+const updateBoxRows = function (box, callUp = true) {
   // Set position for the rows of this box based on the sizes of the boxes
   // they contain, then set the size of this box from that.
   // Also calls up to update the parent box since this box's size could
   // have changed (updateRowCells on the row this box is in and updateBoxRows
   // on the parent box)
+
+  // TODO: would be good to have a setting to force updating the parent, for
+  // when something is reparented, so that we could then have a check for
+  // whether the box size changed; if unchanged then don't bother to update.
   let w = 0;
   let h = 0;
 
@@ -278,7 +300,7 @@ const updateBoxRows = function (box) {
     box.h = h + BOX_PAD;
   }
 
-  if (box.under) {
+  if (callUp && box.under) {
     updateRowCells(box.under.rows[box.rowIdx]);
     updateBoxRows(box.under);
   }
@@ -343,7 +365,7 @@ const drawBox = function (box, idx) {
     CNV.exitRel();
   });
 
-  if (typeof box.text === 'string') {
+  if (typeof box.text === 'string' && box.text.length > 0) {
     CNV.drawText({x: Math.round(box.w/2),
                   y: Math.round(box.h/2),
                   msg: box.text, fill: '#000000'});
@@ -365,10 +387,16 @@ const drawBox = function (box, idx) {
 };
 
 const startHoldTimeout1 = function () {
+  if (typeof HOLD_TIMEOUT1_ID === 'number') {
+    window.clearTimeout(HOLD_TIMEOUT1_ID);
+  }
   HOLD_TIMEOUT1_ID = window.setTimeout(handleHoldTimeout1, HOLD_TIMEOUT1_MS);
 };
 
 const startHoldTimeout2 = function () {
+  if (typeof HOLD_TIMEOUT2_ID === 'number') {
+    window.clearTimeout(HOLD_TIMEOUT2_ID);
+  }
   HOLD_TIMEOUT2_ID = window.setTimeout(handleHoldTimeout2, HOLD_TIMEOUT2_MS);
 };
 
@@ -376,12 +404,12 @@ const cancelHoldTimeout = function () {
   WARN_HOLD = false;
 
   if (typeof HOLD_TIMEOUT1_ID === 'number') {
-    clearTimeout(HOLD_TIMEOUT1_ID)
-    HOLD_TIMEOUT1_ID =   null;
+    window.clearTimeout(HOLD_TIMEOUT1_ID)
+    HOLD_TIMEOUT1_ID = null;
   }
   if (typeof HOLD_TIMEOUT2_ID === 'number') {
-    clearTimeout(HOLD_TIMEOUT2_ID)
-    HOLD_TIMEOUT2_ID =   null;
+    window.clearTimeout(HOLD_TIMEOUT2_ID)
+    HOLD_TIMEOUT2_ID = null;
   }
 };
 
@@ -409,7 +437,7 @@ const boxFromString = function (str, level, i) {
   const box = {rows:[], level};
 
   if (str[i] === ID_SYM) {
-    // .id
+    // id
     let idDone = false;
     let idStr = '';
     i++;
@@ -437,7 +465,7 @@ const boxFromString = function (str, level, i) {
     throw 'missing ' + OPEN_SYM + ' or ' + ID_SYM + ' at start of object';
   }
 
-  // ()
+  // list
   i++;
 
   let curRow = null;
@@ -459,13 +487,12 @@ const boxFromString = function (str, level, i) {
           // set sizes of rows and relative position of children
           box.rows.forEach(updateRowCells);
           // set positions of rows and size of this box,
-          // won't call up as box.under isn't set yet
-          updateBoxRows(box);
+          updateBoxRows(box, false);
         }
         return {box, i};
       case ROW_SYM:
         i++;
-        if (curRow === null) {
+        if (!curRow) {
           throw ROW_SYM + ' without previous row';
         } else if (curRow.cells.length === 0) {
           throw 'empty row';
@@ -498,7 +525,7 @@ const loadFromHash = function () {
     try {
       hash = decodeURIComponent(hash.substring(1));
     } catch (e) {
-      console.log('decodeURIComponent failed');
+      console.log('load error: decodeURIComponent failed');
       return;
     }
     let box = null;
@@ -506,16 +533,17 @@ const loadFromHash = function () {
     try {
       ({i, box} = boxFromString(hash, 0, i));
     } catch (e) {
-      console.log('boxFromString threw ' + e);
+      console.log('load error: boxFromString threw ' + e);
       return;
     }
     if (box) {
       resetGlobals();
       if (i !== hash.length) {
-        console.log('hash error: trailing characters')
+        console.log('load error: trailing characters')
       } else {
-        box.x = BOX_PAD;
-        box.y = BOX_PAD;
+        // make up position for a restored box
+        box.x = BOX_PAD * 2;
+        box.y = BOX_PAD * 2;
         BOXES = [box];
         reindexBoxes();
 
@@ -579,7 +607,6 @@ const promptText = function (init, cb) {
 
   if (CANCEL_PROMPT) {
     CANCEL_PROMPT();
-    CANCEL_PROMPT = null;
   }
 
   PROMPT_FORM.style.visibility = 'visible';
@@ -606,6 +633,7 @@ const cancelPromptText = function (submitHandler) {
   PROMPT_INPUT.value = '';
   PROMPT_FORM.style.visibility = 'hidden'
   PROMPT_FORM.removeEventListener('submit', submitHandler);
+  CANCEL_PROMPT = null;
 };
 
 const tagBox = function (box, text) {
@@ -700,11 +728,13 @@ GET_TOUCHY(CNV.element, {
 
         } else {
           // box already has rows, just create a box under this one
+          // no prompt
           createNewBox(TOUCH_ORIGIN, TARGET_BOX);
         }
 
       } else if (BOXES.length === 0) {
         // nothing targeted, no existing boxes, make a top level box
+        // no prompt
         if (!WARN_HOLD) {
           createNewBox(TOUCH_ORIGIN);
         }
