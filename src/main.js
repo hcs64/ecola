@@ -502,7 +502,7 @@ const updateSaveHash = function () {
 };
 
 
-const promptText = function (init, x, y, cb) {
+const promptText = function (init, cb) {
   if (typeof init !== 'string') {
     init = '';
   }
@@ -513,8 +513,6 @@ const promptText = function (init, x, y, cb) {
   }
 
   PROMPT_FORM.style.visibility = 'visible';
-  PROMPT_FORM.style.left = String(x) + 'px';
-  PROMPT_FORM.style.top = String(y) + 'px';
 
   const submitHandler = function (e) {
     const value = PROMPT_INPUT.value;
@@ -622,10 +620,7 @@ GET_TOUCHY(CNV.element, {
         if (TARGET_BOX.rows.length === 0) {
           // nothing is in this box yet, give a chance to enter text
           const targetBoxCopy = TARGET_BOX;
-          let {x,y} = convertToAbsoluteXY(TARGET_BOX, 0, 0);
-          x += PAN_TRANSLATE.x;
-          y += PAN_TRANSLATE.y;
-          promptText(TARGET_BOX.text, x, y, function (text) {
+          promptText(TARGET_BOX.text, function (text) {
             tagBox(targetBoxCopy, text);
             if (text.length === 0) {
               // position doesn't matter with the second param set
