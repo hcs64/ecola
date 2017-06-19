@@ -51,6 +51,12 @@ const SAVE_LINK = document.getElementById('save-link');
 const PROMPT_INPUT = document.getElementById('prompt-input');
 const PROMPT_FORM = document.getElementById('prompt-form');
 
+const OPEN_SYM = '(';
+const CLOSE_SYM = ')';
+const ROW_SYM = ',';
+const ID_SYM = "'";
+const ESC_SYM = '~';
+
 const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
   if (first === -1) {
     first = boxes.length - 1;
@@ -402,14 +408,14 @@ const boxFromString = function (str, level, i) {
 
   const box = {rows:[], level};
 
-  if (str[i] === '.') {
+  if (str[i] === ID_SYM) {
     // .id
     let idDone = false;
     let idStr = '';
     i++;
     while (!idDone && i < str.length) {
       switch (str[i]) {
-        case '~':
+        case ESC_SYM:
           i++;
           if (i < str.length) {
             idStr += str[i++];
@@ -417,7 +423,7 @@ const boxFromString = function (str, level, i) {
             throw 'escape char at end of string';
           }
           break;
-        case '(': case ')': case',': case '.':
+        case OPEN_SYM: case CLOSE_SYM: case ROW_SYM: case ID_SYM:
           idDone = true;
           break;
         default:
@@ -427,8 +433,8 @@ const boxFromString = function (str, level, i) {
 
     tagBox(box, idStr);
     return {box, i};
-  } else if (str[i] !== '(') {
-    throw 'missing ( or . at start of object';
+  } else if (str[i] !== OPEN_SYM) {
+    throw 'missing ' + OPEN_SYM + ' or ' + ID_SYM + ' at start of object';
   }
 
   // ()
@@ -438,7 +444,7 @@ const boxFromString = function (str, level, i) {
 
   while (i < str.length) {
     switch (str[i]) {
-      case ')':
+      case CLOSE_SYM:
         i++;
         if (curRow && curRow.cells.length === 0) {
           throw 'empty last row';
@@ -457,18 +463,19 @@ const boxFromString = function (str, level, i) {
           updateBoxRows(box);
         }
         return {box, i};
-      case ',':
+      case ROW_SYM:
         i++;
         if (curRow === null) {
-          throw ', without previous row';
+          throw ROW_SYM + ' without previous row';
         } else if (curRow.cells.length === 0) {
           throw 'empty row';
         }
         curRow = {cells: []};
         box.rows.push(curRow);
         break;
-      case '(':
-      case '.':
+      case OPEN_SYM:
+      case ID_SYM:
+        // either of these signify a whole object
         if (!curRow) {
           curRow = {cells: []};
           box.rows.push(curRow);
@@ -479,7 +486,7 @@ const boxFromString = function (str, level, i) {
         curRow.cells.push(childBox);
         break;
      default:
-        throw 'unknown character';
+        throw "unexpected character '" + str[i] + "'";
     }
   }
 
@@ -519,8 +526,8 @@ const escapeSaveString = function (str) {
 
   for (let i = 0; i < str.length; i++) {
     switch (str[i]) {
-      case '(': case ')': case ',': case '.': case '~':
-        outStr += '~' + str[i];
+      case OPEN_SYM: case CLOSE_SYM: case ROW_SYM: case ID_SYM: case ESC_SYM:
+        outStr += ESC_SYM + str[i];
         break;
       default:
         outStr += str[i];
@@ -532,21 +539,21 @@ const escapeSaveString = function (str) {
 
 const stringFromBox = function (box) {
   if (typeof box.text === 'string' && box.text !== '') {
-    return '.' + escapeSaveString(box.text);
+    return ID_SYM + escapeSaveString(box.text);
   }
 
-  let str = '(';
+  let str = OPEN_SYM;
 
   box.rows.forEach(function (row, rowIdx) {
     if (rowIdx !== 0) {
-      str += ',';
+      str += ROW_SYM;
     }
     row.cells.forEach(function (cell) {
       str += stringFromBox(cell);
     });
   });
 
-  return str + ')';
+  return str + CLOSE_SYM;
 };
 
 const updateSaveHash = function () {
@@ -708,7 +715,6 @@ GET_TOUCHY(CNV.element, {
 });
 
 window.addEventListener('resize', function () {
-  CANCEL_PROMPT();
   CNV.setupCanvas();
   requestDraw();
 });
