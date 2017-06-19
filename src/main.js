@@ -396,12 +396,44 @@ const handleHoldTimeout2 = function () {
 };
 
 const boxFromString = function (str, level, i) {
-  if (i >= str.length || str[i] !== '(') {
-    throw 'missing (';
+  if (i >= str.length) {
+    throw 'expected object at end of string';
   }
-  i++;
 
   const box = {rows:[], level};
+
+  if (str[i] === '.') {
+    // .id
+    let idDone = false;
+    let idStr = '';
+    i++;
+    while (!idDone && i < str.length) {
+      switch (str[i]) {
+        case '~':
+          i++;
+          if (i < str.length) {
+            idStr += str[i++];
+          } else {
+            throw 'escape char at end of string';
+          }
+          break;
+        case '(': case ')': case',': case '.':
+          idDone = true;
+          break;
+        default:
+          idStr += str[i++];
+      }
+    }
+
+    tagBox(box, idStr);
+    return {box, i};
+  } else if (str[i] !== '(') {
+    throw 'missing ( or . at start of object';
+  }
+
+  // ()
+  i++;
+
   let curRow = null;
 
   while (i < str.length) {
@@ -436,6 +468,7 @@ const boxFromString = function (str, level, i) {
         box.rows.push(curRow);
         break;
       case '(':
+      case '.':
         if (!curRow) {
           curRow = {cells: []};
           box.rows.push(curRow);
@@ -445,23 +478,27 @@ const boxFromString = function (str, level, i) {
         childBox.under = box;
         curRow.cells.push(childBox);
         break;
+     default:
+        throw 'unknown character';
     }
   }
 
   throw 'unexpected end of string';
 };
 const loadFromHash = function () {
-  if (/^#[(),]+$/.test(window.location.hash)) {
+  const hash = window.location.hash;
+
+  if (typeof hash === 'string' && hash.length > 1 && hash[0] === '#') {
     let box = null;
     let i = 1;
     try {
-      ({i, box} = boxFromString(window.location.hash, 0, i));
+      ({i, box} = boxFromString(hash, 0, i));
     } catch (e) {
       console.log('boxFromString threw ' + e);
     }
     if (box) {
       resetGlobals();
-      if (i !== window.location.hash.length) {
+      if (i !== hash.length) {
         console.log('hash error: trailing characters')
       } else {
         box.x = BOX_PAD;
@@ -477,7 +514,27 @@ const loadFromHash = function () {
   }
 };
 
+const escapeSaveString = function (str) {
+  let outStr = '';
+
+  for (let i = 0; i < str.length; i++) {
+    switch (str[i]) {
+      case '(': case ')': case ',': case '.': case '~':
+        outStr += '~' + str[i];
+        break;
+      default:
+        outStr += str[i];
+    }
+  }
+
+  return outStr;
+};
+
 const stringFromBox = function (box) {
+  if (typeof box.text === 'string' && box.text !== '') {
+    return '.' + escapeSaveString(box.text);
+  }
+
   let str = '(';
 
   box.rows.forEach(function (row, rowIdx) {
