@@ -7,7 +7,6 @@ let BOXES;
 let PANNING;
 let PAN_TRANSLATE;
 let TEMP_PAN_TRANSLATE;
-let LAST_ADDED_BOX;
 let DRAW_REQUEST_IN_FLIGHT;
 let TOUCH_ORIGIN;
 let HOLD_TIMEOUT1_ID;
@@ -16,13 +15,13 @@ let TARGET_BOX;
 let TARGET_REGION;
 let WARN_HOLD;
 let SAVE_HASH;
+let CANCEL_PROMPT;
 
 const resetGlobals = function () {
   BOXES = [];
   PANNING = false;
   PAN_TRANSLATE = {x: 0, y: 0};
   TEMP_PAN_TRANSLATE = {x: 0, y: 0};
-  LAST_ADDED_BOX = null;
   if (DRAW_REQUEST_IN_FLIGHT) {
     window.cancelAnimationFrame(DRAW_REQUEST_IN_FLIGHT);
   }
@@ -35,6 +34,7 @@ const resetGlobals = function () {
   TARGET_REGION = null;
   WARN_HOLD = false;
   SAVE_HASH = '#';
+  CANCEL_PROMPT = null;
 };
 
 const TARGET_LINE_WIDTH = 15;
@@ -44,9 +44,12 @@ const PAN_DIST = 20;
 const BOX_PAD = 30;
 const ROW_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
 const LEVEL_COLORS = ['#e8e8ff', '#ffe8e8', '#e0ffe0'];
-const LAST_ADDED_COLOR = '#c0c0c0';
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
+
+const SAVE_LINK = document.getElementById('save-link');
+const PROMPT_INPUT = document.getElementById('prompt-input');
+const PROMPT_FORM = document.getElementById('prompt-form');
 
 const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
   if (first === -1) {
@@ -98,7 +101,7 @@ const chooseTarget = function (p, under) {
   let targetRow = null;
   let targetRowIdx = -1;
   let targetIdx = -1;
-  let region;
+  let region = null;
 
   const {x: lx, y: ly} = convertToBoxXY(under, p.x, p.y);
 
@@ -170,8 +173,8 @@ const chooseTarget = function (p, under) {
 }
 
 const createNewBox = function (p, under = null) {
-  const newBox = {x: p.x - BOX_PAD, y: p.y - BOX_PAD,
-                  w: BOX_PAD*2, h: BOX_PAD*2,
+  const newBox = {x: 0, y: 0,
+                  w: BOX_PAD*2, h: BOX_PAD,
                   rows: [], under, level: 0};
 
   if (under) {
@@ -188,7 +191,11 @@ const createNewBox = function (p, under = null) {
     reindexRows(under.rows);
     updateRowCells(targetRow);
     updateBoxRows(under);
+
   } else {
+    newBox.x = p.x - BOX_PAD;
+    newBox.y = p.y - Math.round(BOX_PAD/2);
+
     BOXES.push(newBox);
     newBox.idx = BOXES.indexOf(newBox);
   }
@@ -241,8 +248,8 @@ const reindexRows = function (rows) {
 };
 
 const updateBoxRows = function (box) {
-  // Set size and position for the rows of this box based on the sizes
-  // of the boxes they contain, then set the size of this box from that.
+  // Set position for the rows of this box based on the sizes of the boxes
+  // they contain, then set the size of this box from that.
   // Also calls up to update the parent box since this box's size could
   // have changed (updateRowCells on the row this box is in and updateBoxRows
   // on the parent box)
@@ -259,7 +266,7 @@ const updateBoxRows = function (box) {
 
   if (box.rows.length === 0) {
     box.w = BOX_PAD * 2;
-    box.h = BOX_PAD * 2;
+    box.h = BOX_PAD;
   } else {
     box.w = w;
     box.h = h + BOX_PAD;
@@ -319,10 +326,6 @@ const drawBox = function (box, idx) {
   const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h,
                      fill: LEVEL_COLORS[box.level % LEVEL_COLORS.length]};
 
-  if (!TARGET_BOX && box === LAST_ADDED_BOX) {
-    rectAttrs.stroke = LAST_ADDED_COLOR;
-  }
-
   CNV.drawRect(rectAttrs);
 
   box.rows.forEach(function (row) {
@@ -333,6 +336,12 @@ const drawBox = function (box, idx) {
     row.cells.forEach(drawBox);
     CNV.exitRel();
   });
+
+  if (typeof box.text === 'string') {
+    CNV.drawText({x: Math.round(box.w/2),
+                  y: Math.round(box.h/2),
+                  msg: box.text, fill: '#000000'});
+  }
 
   if (box === TARGET_BOX) {
     CNV.context.lineWidth = TARGET_LINE_WIDTH;
@@ -347,17 +356,6 @@ const drawBox = function (box, idx) {
   }
 
   CNV.exitRel();
-};
-
-const rePan = function () {
-  //const {x, y} = convertToAbsoluteXY(newBox, newBox.w/2, newBox.h/2)
-  //PAN_TRANSLATE.x += TOUCH_ORIGIN.x - Math.round(x);
-  //PAN_TRANSLATE.y += TOUCH_ORIGIN.y - Math.round(y);
-  //const {x, y} = convertToAbsoluteXY(TARGET_BOX,
-  //  TARGET_REGION.x + TARGET_REGION.w/2,
-  //  TARGET_REGION.y + TARGET_REGION.h/2);
-  //PAN_TRANSLATE.x += Math.round(TOUCH_ORIGIN.x - x);
-  //PAN_TRANSLATE.y += Math.round(TOUCH_ORIGIN.y - y);
 };
 
 const startHoldTimeout1 = function () {
@@ -416,7 +414,7 @@ const boxFromString = function (str, level, i) {
         if (box.rows.length === 0) {
           // size of an empty box
           box.w = BOX_PAD * 2;
-          box.h = BOX_PAD * 2;
+          box.h = BOX_PAD;
         } else {
           // row and cell indexes
           reindexRows(box.rows);
@@ -504,13 +502,70 @@ const updateSaveHash = function () {
 };
 
 
+const promptText = function (init, x, y, cb) {
+  if (typeof init !== 'string') {
+    init = '';
+  }
+
+  if (CANCEL_PROMPT) {
+    CANCEL_PROMPT();
+    CANCEL_PROMPT = null;
+  }
+
+  PROMPT_FORM.style.visibility = 'visible';
+  PROMPT_FORM.style.left = String(x) + 'px';
+  PROMPT_FORM.style.top = String(y) + 'px';
+
+  const submitHandler = function (e) {
+    const value = PROMPT_INPUT.value;
+    cancelPromptText(submitHandler);
+    PROMPT_INPUT.blur();
+    e.preventDefault();
+
+    cb(value);
+  };
+
+  PROMPT_FORM.addEventListener('submit', submitHandler);
+
+  PROMPT_INPUT.value = init;
+  PROMPT_INPUT.focus();
+
+  CANCEL_PROMPT = () => cancelPromptText(submitHandler);
+};
+
+const cancelPromptText = function (submitHandler) {
+  PROMPT_INPUT.blur();
+  PROMPT_INPUT.value = '';
+  PROMPT_FORM.style.visibility = 'hidden'
+  PROMPT_FORM.removeEventListener('submit', submitHandler);
+};
+
+const tagBox = function (box, text) {
+  if (typeof text === 'string' && text !== '') {
+    box.text = text;
+    const width = CNV.context.measureText(text).width;
+    box.w = width + BOX_PAD;
+    box.h = BOX_PAD;
+    if (box.under) {
+      updateRowCells(box.under.rows[box.rowIdx]);
+      updateBoxRows(box.under);
+    }
+  } else {
+    delete box.text;
+  }
+  requestDraw();
+};
+
 // main code starts here
 
 resetGlobals();
 loadFromHash();
 
 GET_TOUCHY(CNV.element, {
-  touchStart (p) {
+  touchStart: function (p) {
+    if (CANCEL_PROMPT) {
+      CANCEL_PROMPT();
+    }
     p = adjustForPan(p);
     TOUCH_ORIGIN = {x: p.x, y: p.y};
 
@@ -523,7 +578,7 @@ GET_TOUCHY(CNV.element, {
 
     requestDraw();
   },
-  touchMove (p) {
+  touchMove: function (p) {
     p = adjustForPan(p);
     const dist = Math.sqrt(
       Math.pow(TOUCH_ORIGIN.x - p.x, 2) + Math.pow(TOUCH_ORIGIN.y - p.y, 2));
@@ -546,7 +601,7 @@ GET_TOUCHY(CNV.element, {
     }
     requestDraw();
   },
-  touchEnd (p, cancelled) {
+  touchEnd: function (p, cancelled) {
     p = adjustForPan(p);
     if (PANNING) {
       TEMP_PAN_TRANSLATE.x = p.x - TOUCH_ORIGIN.x;
@@ -562,24 +617,34 @@ GET_TOUCHY(CNV.element, {
     } else if (WARN_HOLD) {
       //
     } else {
-      let newBox;
       if (TARGET_BOX) {
-        newBox = createNewBox(TOUCH_ORIGIN, TARGET_BOX);
+        // a box has been targeted, what to do?
+        if (TARGET_BOX.rows.length === 0) {
+          // nothing is in this box yet, give a chance to enter text
+          const targetBoxCopy = TARGET_BOX;
+          let {x,y} = convertToAbsoluteXY(TARGET_BOX, 0, 0);
+          x += PAN_TRANSLATE.x;
+          y += PAN_TRANSLATE.y;
+          promptText(TARGET_BOX.text, x, y, function (text) {
+            tagBox(targetBoxCopy, text);
+            if (text.length === 0) {
+              // position doesn't matter with the second param set
+              createNewBox({x:0,y:0}, targetBoxCopy);
+            }
+          });
 
-        rePan();
+        } else {
+          // box already has rows, just create a box under this one
+          createNewBox(TOUCH_ORIGIN, TARGET_BOX);
+        }
 
       } else if (BOXES.length === 0) {
+        // nothing targeted, no existing boxes, make a top level box
         if (!WARN_HOLD) {
-          newBox = createNewBox(TOUCH_ORIGIN);
+          createNewBox(TOUCH_ORIGIN);
         }
       }
-
-      if (!!newBox) {
-        if (!cancelled) {
-          LAST_ADDED_BOX = newBox;
-        }
-      }
-
+      // do nothing if a click lands nowhere when there are alredy boxes
     }
 
     TARGET_BOX = null;
@@ -591,6 +656,7 @@ GET_TOUCHY(CNV.element, {
 });
 
 window.addEventListener('resize', function () {
+  CANCEL_PROMPT();
   CNV.setupCanvas();
   requestDraw();
 });
@@ -602,7 +668,7 @@ window.addEventListener('hashchange', function () {
   }
 });
 
-document.getElementById('save-link').addEventListener('click', function (e) {
+SAVE_LINK.addEventListener('click', function (e) {
   updateSaveHash();
   window.history.replaceState(undefined, undefined, SAVE_HASH);
   e.preventDefault();

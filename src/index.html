@@ -5,13 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ecola tree editor</title>
 <style>
-html, body { margin: 0; padding: 0; overflow: hidden }
-canvas { position: fixed; top: 0; left: 0 }
-a#save-link { position: fixed; top: 0; left: 0; z-index: 1 }
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden
+}
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0
+}
+a#save-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1
+}
+form#prompt-form {
+  background-color: white;
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  visibility: hidden
+}
 </style>
 </head>
 <body>
 <a href="#" id="save-link">Save</a>
+<form id="prompt-form"><input id="prompt-input"><br>
+Enter node text, leave blank to create a child node
+</form>
 <script src="cnvr.js"></script>
 <script src="touchy.js"></script>
 <script src="anim.js"></script>
