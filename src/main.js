@@ -63,13 +63,14 @@ const TARGET_LINE_WIDTH = 15;
 const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
-const BOX_PAD = 60;
+const BOX_PAD = 40;
+const MIN_PAD = 6;
 const LEVEL_HUES = [[240],[0]];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
 const ZOOM_LEVEL_PIXELS = 300;
-const MIN_SHRINK = 10 / BOX_PAD;
+const MIN_SHRINK = MIN_PAD / BOX_PAD;
 const TOO_SMALL_THRESH = 0.75;
 
 const SAVE_LINK = document.getElementById('save-link');
@@ -581,7 +582,7 @@ const drawBox = function (box, idx) {
     if (WARN_HOLD) {
       CNV.drawRect(
         {x: 0, y: 0, w: box.w, h: box.h, stroke: WARN_COLOR});
-    } else {
+    } else if (TARGET_REGION) {
       const {x,y,w,h} = TARGET_REGION;
       CNV.drawRect({x,y,w,h, stroke: TARGET_COLOR});
     }
@@ -738,16 +739,19 @@ const loadFromHash = function () {
         console.log('load error: trailing characters')
       } else {
         // make up position for a restored box
-        box.x = window.innerWidth/2;
-        box.y = window.innerHeight/2;
         BOXES = [box];
+        box.x = 0;
+        box.y = 0;
         reindexBoxes();
+        zoomOut();
+        updateAllBoxes();
+        box.x = (window.innerWidth - box.w)/2;
+        box.y = (window.innerHeight - box.h)/2;
 
         BOX_CHANGED = true;
+        requestDraw();
 
         updateSaveHash();
-
-        requestDraw();
       }
     }
   }
@@ -851,7 +855,6 @@ const tagBox = function (box, text) {
 
 resetGlobals();
 loadFromHash();
-zoomOut();
 
 GET_TOUCHY(CNV.element, {
   touchStart: function (p) {
@@ -870,7 +873,7 @@ GET_TOUCHY(CNV.element, {
         ZOOMING_BOX = TARGET_BOX;
         TARGET_BOX = null;
       } else {
-        ({region: TARGET_REGION} = chooseTarget({x, y}, TARGET_BOX));
+        //({region: TARGET_REGION} = chooseTarget({x, y}, TARGET_BOX));
         startHoldTimeout1();
       }
     }
