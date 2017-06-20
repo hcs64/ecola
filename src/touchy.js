@@ -5,6 +5,8 @@ const GET_TOUCHY = function(elem, cb){
 
 let curTouches = [];
 let primaryIdx = -1;
+let pinchIdx1 = -1;
+let pinchIdx2 = -1;
 
 const startTouch = function (x, y, id, mouse) {
     const obj = { x, y };
@@ -18,8 +20,15 @@ const startTouch = function (x, y, id, mouse) {
     if (primaryIdx !== -1) {
       cb.touchCancel();
     }
-    primaryIdx = curTouches.length - 1;
-    cb.touchStart(obj);
+
+    if (curTouches.length === 2 && (pinchIdx1 === -1 && pinchIdx2 === -1)) {
+      pinchIdx1 = 0;
+      pinchIdx2 = 1;
+      cb.pinchStart(curTouches[pinchIdx1], curTouches[pinchIdx2]);
+    } else {
+      primaryIdx = curTouches.length - 1;
+      cb.touchStart(obj);
+    }
 }
  
 const updateTouch = function (idx, x, y) {
@@ -29,6 +38,12 @@ const updateTouch = function (idx, x, y) {
   
   if (idx === primaryIdx) {
     cb.touchMove(obj);
+  }
+};
+
+const finishUpdateTouch = function () {
+  if (curTouches.length === 2 && pinchIdx1 !== -1 && pinchIdx2 !== -1) {
+    cb.pinchMove(curTouches[pinchIdx1], curTouches[pinchIdx2]);
   }
 };
 
@@ -42,6 +57,26 @@ const endTouch = function (idx, x, y, cancelled = false) {
     primaryIdx = -1;
   } else if (primaryIdx !== -1 && primaryIdx > idx) {
     primaryIdx -= 1;
+  }
+
+  // slight inaccuracy here as the other pinch point may not have had a chance
+  // to update yet this event
+  if (idx === pinchIdx1) {
+    if (pinchIdx2 !== -1) {
+      cb.pinchEnd(curTouches[pinchIdx1], curTouches[pinchIdx2]);
+    }
+    pinchIdx1 = -1;
+  } else if (pinchIdx1 !== -1 && pinchIdx1 > idx) {
+    pinchIdx1 -= 1;
+  }
+
+  if (idx === pinchIdx2) {
+    if (pinchIdx1 !== -1) {
+      cb.pinchEnd(curTouches[pinchIdx1], curTouches[pinchIdx2]);
+    }
+    pinchIdx2 = -1;
+  } else if (pinchIdx2 !== -1 && pinchIdx2 > idx) {
+    pinchIdx2 -= 1;
   }
  
   curTouches.splice(idx, 1);
@@ -101,6 +136,8 @@ const handleTouchMove = function (e) {
 
     updateTouch(idx, t.pageX, t.pageY);
   }
+
+  finishUpdateTouch();
 };
 
 const handleMouseMove = function (e) {

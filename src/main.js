@@ -26,6 +26,7 @@ let SHRINK_ROLLOFF;
 let ZOOMING_BOX;
 let ZOOM_CHANGED;
 let LAST_ZOOM_COORDS;
+let PINCH_DISTANCE;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -55,19 +56,20 @@ const resetGlobals = function () {
   ZOOMING_BOX = null;
   ZOOM_CHANGED = false;
   LAST_ZOOM_COORDS = null;
+  PINCH_DISTANCE = null;
 };
 
 const TARGET_LINE_WIDTH = 15;
 const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
-const BOX_PAD = 30;
+const BOX_PAD = 60;
 const LEVEL_HUES = [[240],[0]];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
 const ZOOM_LEVEL_PIXELS = 300;
-const MIN_SHRINK = 5 / BOX_PAD;
+const MIN_SHRINK = 10 / BOX_PAD;
 const TOO_SMALL_THRESH = 0.75;
 
 const SAVE_LINK = document.getElementById('save-link');
@@ -390,7 +392,7 @@ const updateAllBoxes = function () {
 };
 
 const setZoom = function (newZoom, p) {
-  SEMANTIC_ZOOM = newZoom
+  SEMANTIC_ZOOM = newZoom;
   LAST_ZOOM_COORDS = adjustForPanAndZoom(p);
   ZOOM_CHANGED = true;
   updateZoom();
@@ -956,8 +958,33 @@ GET_TOUCHY(CNV.element, {
     }
 
     cancelHoldTimeout();
+  },
 
-  }
+  pinchStart: function (touch1, touch2) {
+    PINCH_DISTANCE =
+      Math.sqrt(Math.pow(touch1.x - touch2.x, 2) +
+                Math.pow(touch1.y - touch2.y, 2));
+    TOUCH_ORIGIN = {x: touch1.x, y: touch1.y};
+    const zfe = document.getElementById('zoom-factor');
+    zfe.textContent = 'pinchStart';
+  },
+
+  pinchMove: function (touch1, touch2) {
+    let dist =
+      Math.sqrt(Math.pow(touch1.x - touch2.x, 2) +
+                Math.pow(touch1.y - touch2.y, 2));
+    let delta = dist - PINCH_DISTANCE;
+    setZoom(SEMANTIC_ZOOM + delta, TOUCH_ORIGIN);
+
+    const zfe = document.getElementById('zoom-factor');
+    zfe.textContent = 'zoom ' + SEMANTIC_ZOOM
+    PINCH_DISTANCE = dist;
+  },
+
+  pinchEnd: function (touch1, touch2) {
+    PINCH_DISTANCE = null;
+  },
+
 });
 
 window.addEventListener('resize', function () {
