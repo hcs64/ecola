@@ -4,6 +4,7 @@
 const CNV = CNVR();
 
 let BOXES;
+let BOX_CHANGED;
 let PANNING;
 let PAN_TRANSLATE;
 let TEMP_PAN_TRANSLATE;
@@ -27,6 +28,7 @@ let LAST_ZOOM_COORDS;
 
 const resetGlobals = function () {
   BOXES = [];
+  BOX_CHANGED = true;
   PANNING = false;
   PAN_TRANSLATE = {x: 0, y: 0};
   TEMP_PAN_TRANSLATE = {x: 0, y: 0};
@@ -222,7 +224,6 @@ const createNewBox = function (p, under = null) {
 
   if (under) {
     newBox.level = under.level + 1;
-    updateDeepestAndZoom(newBox.level);
 
     let {targetRow, targetRowIdx, targetIdx} = chooseTarget(p, under);
 
@@ -241,6 +242,8 @@ const createNewBox = function (p, under = null) {
     BOXES.push(newBox);
     newBox.idx = BOXES.indexOf(newBox);
   }
+
+  BOX_CHANGED = true;
 
   return newBox;
 };
@@ -269,11 +272,7 @@ const removeBox = function (box) {
     reindexBoxes();
   }
 
-  if (BOXES.length > 0) {
-    recalculateDeepest(BOXES[0]);
-  } else {
-    DEEPEST = 0;
-  }
+  BOX_CHANGED = true;
 
   return removed;
 };
@@ -300,9 +299,6 @@ const updateBoxRows = function (box, callUp = true) {
   // have changed (updateRowCells on the row this box is in and updateBoxRows
   // on the parent box)
 
-  // TODO: might be useful to have a setting to force updating the parent, for
-  // when something is reparented, so that we could then have a check for
-  // whether the box size changed; if unchanged then don't bother to update.
   const s = shrinkage(box);
   let w = 0;
   let h = 0;
@@ -357,14 +353,6 @@ const zoomFactor = function (zoom) {
   return Math.pow(2, zoom/100);
 };
 
-
-const updateDeepestAndZoom = function (level) {
-  if (level > DEEPEST) {
-    DEEPEST = level;
-    updateZoom();
-  }
-};
-
 const recalculateDeepestInner = function (box) {
   DEEPEST = Math.max(DEEPEST, box.level);
   box.rows.forEach(function (row) {
@@ -376,7 +364,9 @@ const recalculateDeepestInner = function (box) {
 
 const recalculateDeepest = function (box) {
   DEEPEST = 0;
-  recalculateDeepestInner(box);
+  if (BOXES.length > 0) {
+    recalculateDeepestInner(BOXES[0]);
+  }
   updateZoom();
 };
 
@@ -390,6 +380,7 @@ const updateAllBoxesInner = function (box) {
   updateBoxRows(box, false);
 };
 const updateAllBoxes = function () {
+  recalculateDeepest();
   BOXES.forEach(updateAllBoxesInner);
 };
 
@@ -408,11 +399,11 @@ const updateZoom = function() {
   if (SEMANTIC_ZOOM < 0) {
     const nz = SEMANTIC_ZOOM/-300;
     const rnz = Math.floor(nz);
-    SHRINK_CUTOFF = rnz;
+    SHRINK_CUTOFF = DEEPEST - rnz;
     SHRINK_ROLLOFF = (1 - (nz - rnz))*(1-MIN_SHRINK)+MIN_SHRINK;
   } else {
     SEMANTIC_ZOOM = 0;
-    SHRINK_CUTOFF = -1;
+    SHRINK_CUTOFF = DEEPEST;
     SHRINK_ROLLOFF = 1;
   }
 
@@ -420,14 +411,13 @@ const updateZoom = function() {
 };
 
 const shrinkage = function (box) {
-  const cutoff = DEEPEST - SHRINK_CUTOFF;
   let level = box.level;
   if (box.rows.length !== 0) {
     level ++;
   }
-  if (level > cutoff) {
+  if (level > SHRINK_CUTOFF) {
     return MIN_SHRINK;
-  } else if (level === cutoff) {
+  } else if (level === SHRINK_CUTOFF) {
     return SHRINK_ROLLOFF;
   } else {
     return 1;
@@ -469,10 +459,13 @@ const draw = function () {
       zoomTargetDim.h = zoomTarget.h;
     }
   }
-  ZOOM_CHANGED = false;
 
   // so much easier to just always do this
-  updateAllBoxes();
+  if (BOX_CHANGED || ZOOM_CHANGED) {
+    updateAllBoxes();
+  }
+  BOX_CHANGED = false;
+  ZOOM_CHANGED = false;
 
   if (zoomTargetDim) {
     // adjust pan to center on the zoom focus
@@ -698,7 +691,7 @@ const loadFromHash = function () {
         BOXES = [box];
         reindexBoxes();
 
-        recalculateDeepest(box);
+        BOX_CHANGED = true;
 
         updateSaveHash();
 
@@ -797,6 +790,7 @@ const tagBox = function (box, text) {
     delete box.text;
     delete box.textWidth;
   }
+  BOX_CHANGED = true;
   requestDraw();
 };
 
@@ -804,7 +798,6 @@ const tagBox = function (box, text) {
 
 resetGlobals();
 loadFromHash();
-updateZoom();
 
 GET_TOUCHY(CNV.element, {
   touchStart: function (p) {
