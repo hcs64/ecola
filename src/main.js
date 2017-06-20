@@ -399,7 +399,7 @@ const updateZoom = function() {
     const nz = SEMANTIC_ZOOM/-300;
     const rnz = Math.floor(nz);
     SHRINK_CUTOFF = DEEPEST - rnz;
-    SHRINK_ROLLOFF = (1 - (nz - rnz))*(1-MIN_SHRINK)+MIN_SHRINK;
+    SHRINK_ROLLOFF = Math.max(1 - (nz - rnz), MIN_SHRINK);
   } else {
     SEMANTIC_ZOOM = 0;
     SHRINK_CUTOFF = DEEPEST;
@@ -498,6 +498,10 @@ const drawBox = function (box, idx) {
   const scale = getShrinkage(box);
   CNV.enterRel({x: box.x, y: box.y});
 
+  // TODO: Just precompute this stuff for each level? Or at least
+  // stash these calculations for level and row in a function.
+  // Also these shouldn't be magical numbers poppin' off the dome,
+  // should use a lerp function.
   const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
   let levelVal;
 
@@ -517,8 +521,8 @@ const drawBox = function (box, idx) {
     
     CNV.enterRel({x: row.x, y: row.y});
 
-    if (scale >= .5) {
-      const rowVal = Math.round((99 - scale * 4) * 4) / 4;
+    if (scale >= .75) {
+      const rowVal = Math.round((101 - scale * 6) * 4) / 4;
       const rowHSL = `hsl(${levelHue},100%,${rowVal}%)`;
 
       CNV.drawRect({x: 0, y: 0, w: box.w, h: row.h, fill: rowHSL});
@@ -833,8 +837,15 @@ GET_TOUCHY(CNV.element, {
     TARGET_BOX = findIntersectingBox({x, y});
 
     if (TARGET_BOX) {
-      ({region: TARGET_REGION} = chooseTarget({x, y}, TARGET_BOX));
-      startHoldTimeout1();
+      if (getShrinkage(TARGET_BOX) !== 1) {
+        // TODO: the check here should be for .5 or some threshold, probably
+        // with bigger BOX_PAD to start with. Need some way to indicate this
+        // visually besides it just not working.
+        TARGET_BOX = null;
+      } else {
+        ({region: TARGET_REGION} = chooseTarget({x, y}, TARGET_BOX));
+        startHoldTimeout1();
+      }
     }
 
     requestDraw();
