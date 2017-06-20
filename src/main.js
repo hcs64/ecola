@@ -429,6 +429,12 @@ const adjustForPanAndZoom = function ({x,y}) {
           y: y - PAN_TRANSLATE.y};
 };
 
+const setTextAttributes = function () {
+  CNV.context.textAlign = 'center';
+  CNV.context.textBaseline = 'middle';
+  CNV.context.font = FONT_SIZE + 'px Arial';
+};
+
 const requestDraw = function () {
   if (!DRAW_REQUEST_IN_FLIGHT) {
     DRAW_REQUEST_IN_FLIGHT = window.requestAnimationFrame(draw);
@@ -479,10 +485,7 @@ const draw = function () {
   // setup canvas context for drawing
   CNV.clear();
 
-  CNV.context.textAlign = 'center';
-  CNV.context.textBaseline = 'middle';
-  CNV.context.font = FONT_SIZE + 'px Arial';
-
+  setTextAttributes();
   CNV.enterRel({x: PAN_TRANSLATE.x + TEMP_PAN_TRANSLATE.x,
                 y: PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y});
 
@@ -802,6 +805,7 @@ const cancelPromptText = function (submitHandler) {
 const tagBox = function (box, text) {
   if (typeof text === 'string' && text !== '') {
     box.text = text;
+    setTextAttributes();
     box.textWidth = CNV.context.measureText(text).width;
   } else {
     delete box.text;
