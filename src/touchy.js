@@ -15,10 +15,11 @@ const startTouch = function (x, y, id, mouse) {
     }
 
     curTouches.push(obj);
-    if (primaryIdx === -1) {
-      primaryIdx = curTouches.length - 1;
-      cb.touchStart(obj);
+    if (primaryIdx !== -1) {
+      cb.touchCancel();
     }
+    primaryIdx = curTouches.length - 1;
+    cb.touchStart(obj);
 }
  
 const updateTouch = function (idx, x, y) {
@@ -33,7 +34,11 @@ const updateTouch = function (idx, x, y) {
 
 const endTouch = function (idx, x, y, cancelled = false) {
   if (idx === primaryIdx) {
-    cb.touchEnd({x,y}, cancelled);
+    if (cancelled) {
+      cb.touchCancel();
+    } else {
+      cb.touchEnd({x,y});
+    }
     primaryIdx = -1;
   } else if (primaryIdx !== -1 && primaryIdx > idx) {
     primaryIdx -= 1;

@@ -877,13 +877,10 @@ GET_TOUCHY(CNV.element, {
     if (!PANNING && dist >= PAN_DIST) {
       PANNING = true;
       cancelHoldTimeout();
-    }
 
-    if (TARGET_BOX) {
-      if (PANNING) {
-        TARGET_BOX = null;
-        TARGET_REGION = null;
-      }
+      TARGET_BOX = null;
+      TARGET_REGION = null;
+      ZOOMING_BOX = null;
     }
 
     if (PANNING) {
@@ -892,7 +889,7 @@ GET_TOUCHY(CNV.element, {
     }
     requestDraw();
   },
-  touchEnd: function (p, cancelled) {
+  touchEnd: function (p) {
     if (PANNING) {
       TEMP_PAN_TRANSLATE.x = p.x - TOUCH_ORIGIN.x;
       TEMP_PAN_TRANSLATE.y = p.y - TOUCH_ORIGIN.y;
@@ -945,6 +942,22 @@ GET_TOUCHY(CNV.element, {
     cancelHoldTimeout();
     requestDraw();
   },
+  touchCancel: function () {
+    if (PANNING) {
+      TEMP_PAN_TRANSLATE.x = 0;
+      TEMP_PAN_TRANSLATE.y = 0;
+    } else if (WARN_HOLD) {
+      //
+    } else if (ZOOMING_BOX) {
+      ZOOMING_BOX = null;
+    } else {
+      TARGET_BOX = null;
+      TARGET_REGION = null;
+    }
+
+    cancelHoldTimeout();
+
+  }
 });
 
 window.addEventListener('resize', function () {
