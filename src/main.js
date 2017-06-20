@@ -409,9 +409,9 @@ const updateZoom = function() {
   requestDraw();
 };
 
-const getShrinkage = function (box) {
+const getShrinkage = function (box, noRowBonus) {
   let level = box.level;
-  if (box.rows.length !== 0) {
+  if (box.rows.length !== 0 && !noRowBonus) {
     level ++;
   }
   if (level > SHRINK_CUTOFF) {
@@ -499,7 +499,8 @@ const drawBox = function (box, idx) {
   let levelVal;
 
   if (box.rows.length > 0) {
-    levelVal = 97;
+    const s = getShrinkage(box, true);
+    levelVal = Math.round((s * 12 + 85) * 4) / 4;
   } else {
     levelVal = Math.round((scale * 27 + 70) * 4) / 4;
   }
