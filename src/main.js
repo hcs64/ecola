@@ -393,7 +393,11 @@ const updateAllBoxes = function () {
 
 const setZoom = function (newZoom, p) {
   SEMANTIC_ZOOM = newZoom;
-  LAST_ZOOM_COORDS = adjustForPanAndZoom(p);
+  if (p) {
+    LAST_ZOOM_COORDS = adjustForPanAndZoom(p);
+  } else {
+    LAST_ZOOM_COORDS = null;
+  }
   ZOOM_CHANGED = true;
   updateZoom();
 }
@@ -443,6 +447,11 @@ const zoomToBox = function (box, touch) {
   setZoom(-ZOOM_LEVEL_PIXELS * minLevel, touch);
 };
 
+const zoomOut = function () {
+  recalculateDeepest();
+  setZoom(-ZOOM_LEVEL_PIXELS * DEEPEST, null);
+};
+
 const adjustForPanAndZoom = function ({x,y}) {
   return {x: x - PAN_TRANSLATE.x,
           y: y - PAN_TRANSLATE.y};
@@ -477,11 +486,6 @@ const draw = function () {
     // collect information about where the zoom is focused before it updates,
     // so we can center the zoom there
     zoomTarget = findIntersectingBox(LAST_ZOOM_COORDS);
-    if (!zoomTarget) {
-      if (BOXES.length > 0) {
-        zoomTarget = BOXES[0];
-      }
-    }
 
     if (zoomTarget &&
         typeof zoomTarget.w === 'number' && typeof zoomTarget.h === 'number') {
@@ -734,8 +738,8 @@ const loadFromHash = function () {
         console.log('load error: trailing characters')
       } else {
         // make up position for a restored box
-        box.x = BOX_PAD * 2;
-        box.y = BOX_PAD * 2;
+        box.x = window.innerWidth/2;
+        box.y = window.innerHeight/2;
         BOXES = [box];
         reindexBoxes();
 
@@ -847,6 +851,7 @@ const tagBox = function (box, text) {
 
 resetGlobals();
 loadFromHash();
+zoomOut();
 
 GET_TOUCHY(CNV.element, {
   touchStart: function (p) {
@@ -870,6 +875,8 @@ GET_TOUCHY(CNV.element, {
       }
     }
 
+    const zfe = document.getElementById('zoom-factor');
+    zfe.textContent = zfe.textContent + 'touchStart';
     requestDraw();
   },
   touchMove: function (p) {
@@ -941,13 +948,21 @@ GET_TOUCHY(CNV.element, {
     TARGET_BOX = null;
     TARGET_REGION = null;
 
+    const zfe = document.getElementById('zoom-factor');
+    zfe.textContent = zfe.textContent + 'touchEnd';
+
     cancelHoldTimeout();
     requestDraw();
   },
   touchCancel: function () {
     if (PANNING) {
+      PAN_TRANSLATE.x += TEMP_PAN_TRANSLATE.x;
+      PAN_TRANSLATE.y += TEMP_PAN_TRANSLATE.y;
+
       TEMP_PAN_TRANSLATE.x = 0;
       TEMP_PAN_TRANSLATE.y = 0;
+
+      PANNING = false;
     } else if (WARN_HOLD) {
       //
     } else if (ZOOMING_BOX) {
@@ -956,17 +971,19 @@ GET_TOUCHY(CNV.element, {
       TARGET_BOX = null;
       TARGET_REGION = null;
     }
+    const zfe = document.getElementById('zoom-factor');
+    zfe.textContent = zfe.textContent + 'touchCancel';
 
     cancelHoldTimeout();
   },
 
   pinchStart: function (touch1, touch2) {
+    let x = (touch1.x + touch2.x) / 2;
+    let y = (touch2.y + touch2.y) / 2;
     PINCH_DISTANCE =
       Math.sqrt(Math.pow(touch1.x - touch2.x, 2) +
                 Math.pow(touch1.y - touch2.y, 2));
-    TOUCH_ORIGIN = {x: touch1.x, y: touch1.y};
-    const zfe = document.getElementById('zoom-factor');
-    zfe.textContent = 'pinchStart';
+    TOUCH_ORIGIN = {x, y};
   },
 
   pinchMove: function (touch1, touch2) {
@@ -976,8 +993,6 @@ GET_TOUCHY(CNV.element, {
     let delta = dist - PINCH_DISTANCE;
     setZoom(SEMANTIC_ZOOM + delta, TOUCH_ORIGIN);
 
-    const zfe = document.getElementById('zoom-factor');
-    zfe.textContent = 'zoom ' + SEMANTIC_ZOOM
     PINCH_DISTANCE = dist;
   },
 

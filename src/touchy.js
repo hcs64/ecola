@@ -24,6 +24,7 @@ const startTouch = function (x, y, id, mouse) {
     if (curTouches.length === 2 && (pinchIdx1 === -1 && pinchIdx2 === -1)) {
       pinchIdx1 = 0;
       pinchIdx2 = 1;
+      primaryIdx = -1;
       cb.pinchStart(curTouches[pinchIdx1], curTouches[pinchIdx2]);
     } else {
       primaryIdx = curTouches.length - 1;
