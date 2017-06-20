@@ -16,10 +16,14 @@ let TARGET_REGION;
 let WARN_HOLD;
 let SAVE_HASH;
 let CANCEL_PROMPT;
+
 let SEMANTIC_ZOOM;
 let DEEPEST;
 let SHRINK_CUTOFF;
 let SHRINK_ROLLOFF;
+
+let ZOOM_CHANGED;
+let LAST_ZOOM_COORDS;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -43,6 +47,8 @@ const resetGlobals = function () {
   DEEPEST = 0;
   SHRINK_CUTOFF = 0;
   SHRINK_ROLLOFF = 0;
+  ZOOM_CHANGED = false;
+  LAST_ZOOM_COORDS = null;
 };
 
 const TARGET_LINE_WIDTH = 15;
@@ -161,7 +167,7 @@ const chooseTarget = function (p, under) {
         if (lx < row.cells[0].x) {
           // add at start of row
           targetIdx = 0;
-          region = {x: 0, y: row.y, w: row.x, h: row.h};
+          region = {x: 0, y: row.y, w: row.cells[0].x, h: row.h};
         } else {
           for (let i = 0; i < row.cells.length - 1; i ++) {
             const cell = row.cells[i];
@@ -297,7 +303,7 @@ const updateBoxRows = function (box, callUp = true) {
   // TODO: might be useful to have a setting to force updating the parent, for
   // when something is reparented, so that we could then have a check for
   // whether the box size changed; if unchanged then don't bother to update.
-  const s = shrinkage(box.level);
+  const s = shrinkage(box);
   let w = 0;
   let h = 0;
 
@@ -323,15 +329,15 @@ const updateBoxRows = function (box, callUp = true) {
   }
 
   if (callUp && box.under) {
-    updateRowCells(box.under.rows[box.rowIdx], box.level);
+    updateRowCells(box.under.rows[box.rowIdx], box);
     updateBoxRows(box.under);
   }
 };
 
-const updateRowCells = function (row, level) {
+const updateRowCells = function (row, box) {
   // Set the position of each cell (box) based on the size of previous boxes,
   // and update the size of the row.
-  const s = shrinkage(level);
+  const s = shrinkage(box);
   let h = 0;
   let w = BOX_PAD * s;
 
@@ -379,7 +385,7 @@ const updateAllBoxesInner = function (box) {
     row.cells.forEach(function (cell) {
       updateAllBoxesInner(cell);
     });
-    updateRowCells(row, box.level);
+    updateRowCells(row, box);
   });
   updateBoxRows(box, false);
 };
@@ -387,15 +393,23 @@ const updateAllBoxes = function () {
   BOXES.forEach(updateAllBoxesInner);
 };
 
+const setZoom = function (newZoom, p) {
+  SEMANTIC_ZOOM = newZoom
+  LAST_ZOOM_COORDS = adjustForPanAndZoom(p);
+  ZOOM_CHANGED = true;
+  updateZoom();
+}
 
-const updateZoom = function(newZoom = SEMANTIC_ZOOM) {
-  if (newZoom < 0) {
-    SEMANTIC_ZOOM = newZoom;
-    const nz = SEMANTIC_ZOOM/-100;
+const updateZoom = function() {
+  if (SEMANTIC_ZOOM < -300*DEEPEST) {
+    SEMANTIC_ZOOM = -300*DEEPEST;
+  }
+
+  if (SEMANTIC_ZOOM < 0) {
+    const nz = SEMANTIC_ZOOM/-300;
     const rnz = Math.floor(nz);
     SHRINK_CUTOFF = rnz;
-    SHRINK_ROLLOFF = 1 - (nz - rnz);
-    console.log(SHRINK_CUTOFF, SHRINK_ROLLOFF, DEEPEST);
+    SHRINK_ROLLOFF = (1 - (nz - rnz))*(1-MIN_SHRINK)+MIN_SHRINK;
   } else {
     SEMANTIC_ZOOM = 0;
     SHRINK_CUTOFF = -1;
@@ -405,15 +419,20 @@ const updateZoom = function(newZoom = SEMANTIC_ZOOM) {
   requestDraw();
 };
 
-const shrinkage = function (level) {
+const shrinkage = function (box) {
   const cutoff = DEEPEST - SHRINK_CUTOFF;
+  let level = box.level;
+  if (box.rows.length !== 0) {
+    level ++;
+  }
   if (level > cutoff) {
     return MIN_SHRINK;
   } else if (level === cutoff) {
-    return Math.max(SHRINK_ROLLOFF, MIN_SHRINK);
+    return SHRINK_ROLLOFF;
   } else {
     return 1;
   }
+
 };
 
 const adjustForPanAndZoom = function ({x,y}) {
@@ -430,8 +449,42 @@ const requestDraw = function () {
 const draw = function () {
   DRAW_REQUEST_IN_FLIGHT = false;
 
+  let zoomTarget = null;
+  let zoomTargetDim = null;
+
+  if (ZOOM_CHANGED && LAST_ZOOM_COORDS) {
+    // collect information about where the zoom is focused before it updates,
+    // so we can center the zoom there
+    zoomTarget = findIntersectingBox(LAST_ZOOM_COORDS);
+    if (!zoomTarget) {
+      if (BOXES.length > 0) {
+        zoomTarget = BOXES[0];
+      }
+    }
+
+    if (zoomTarget &&
+        typeof zoomTarget.w === 'number' && typeof zoomTarget.h === 'number') {
+      zoomTargetDim = convertToAbsoluteXY(zoomTarget, 0, 0);
+      zoomTargetDim.w = zoomTarget.w;
+      zoomTargetDim.h = zoomTarget.h;
+    }
+  }
+  ZOOM_CHANGED = false;
+
+  // so much easier to just always do this
   updateAllBoxes();
 
+  if (zoomTargetDim) {
+    // adjust pan to center on the zoom focus
+    const {x: oldx, y: oldy, w: oldw, h: oldh} = zoomTargetDim;
+    const {x: newx, y: newy} = convertToAbsoluteXY(zoomTarget,0,0);
+    const {w: neww, h: newh} = zoomTarget;
+    const {x: zx, y: zy}  = LAST_ZOOM_COORDS;
+    PAN_TRANSLATE.x += zx - ((zx - oldx) / oldw * neww + newx);
+    PAN_TRANSLATE.y += zy - ((zy - oldy) / oldh * newh + newy);
+  }
+
+  // setup canvas context for drawing
   CNV.clear();
 
   CNV.context.textAlign = 'center';
@@ -464,7 +517,7 @@ const drawBox = function (box, idx) {
   });
 
   if (typeof box.text === 'string' && box.text.length > 0) {
-    const s = shrinkage(box.level);
+    const s = shrinkage(box);
     if (s > MIN_SHRINK) {
       const adj = (1-s)/2/s;
       CNV.enterRel({zoom: s});
@@ -863,9 +916,7 @@ window.addEventListener('wheel', function (e) {
     delta *= FONT_SIZE * 15;
   }
 
-  delta = Math.min(20, Math.max(-20, delta));
-
-  updateZoom(SEMANTIC_ZOOM - delta, {x: mx, y: my});
+  setZoom(SEMANTIC_ZOOM - delta, {x: mx, y: my});
 
   const zfe = document.getElementById('zoom-factor');
   
