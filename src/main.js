@@ -58,8 +58,7 @@ const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
 const BOX_PAD = 30;
-const ROW_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
-const LEVEL_COLORS = ['#e8e8ff', '#ffe8e8', '#e0ffe0'];
+const LEVEL_HUES = [[240],[0],[120]];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
@@ -299,7 +298,7 @@ const updateBoxRows = function (box, callUp = true) {
   // have changed (updateRowCells on the row this box is in and updateBoxRows
   // on the parent box)
 
-  const s = shrinkage(box);
+  const s = getShrinkage(box);
   let w = 0;
   let h = 0;
 
@@ -333,7 +332,7 @@ const updateBoxRows = function (box, callUp = true) {
 const updateRowCells = function (row, box) {
   // Set the position of each cell (box) based on the size of previous boxes,
   // and update the size of the row.
-  const s = shrinkage(box);
+  const s = getShrinkage(box);
   let h = 0;
   let w = BOX_PAD * s;
 
@@ -410,7 +409,7 @@ const updateZoom = function() {
   requestDraw();
 };
 
-const shrinkage = function (box) {
+const getShrinkage = function (box) {
   let level = box.level;
   if (box.rows.length !== 0) {
     level ++;
@@ -493,27 +492,38 @@ const draw = function () {
 };
 
 const drawBox = function (box, idx) {
+  const scale = getShrinkage(box);
   CNV.enterRel({x: box.x, y: box.y});
 
-  const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h,
-                     fill: LEVEL_COLORS[box.level % LEVEL_COLORS.length]};
+  const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
+  const levelVal = Math.round((scale * 27 + 70) * 4) / 4;
+  const levelHSL = `hsl(${levelHue},100%,${levelVal}%)`;
+
+  const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h, fill: levelHSL};
 
   CNV.drawRect(rectAttrs);
 
   box.rows.forEach(function (row) {
+    
     CNV.enterRel({x: row.x, y: row.y});
-    CNV.drawRect({x: 0, y: 0, w: box.w, h: row.h,
-                  fill: ROW_COLORS[box.level % ROW_COLORS.length]});
+
+    if (scale >= .5) {
+      const rowVal = Math.round((scale * 23 + 72) * 4) / 4;
+      const rowHSL = `hsl(${levelHue},100%,${rowVal}%)`;
+
+      CNV.drawRect({x: 0, y: 0, w: box.w, h: row.h, fill: rowHSL});
+    }
 
     row.cells.forEach(drawBox);
     CNV.exitRel();
   });
 
   if (typeof box.text === 'string' && box.text.length > 0) {
-    const s = shrinkage(box);
-    if (s > MIN_SHRINK) {
-      const adj = (1-s)/2/s;
-      CNV.enterRel({zoom: s});
+    if (scale > MIN_SHRINK) {
+      const adj = (1-scale)/2/scale;
+      // TODO: CNVR should support this without two levels, probably just
+      // do saving manually
+      CNV.enterRel({zoom: scale});
       CNV.enterRel({x: box.w*adj, y: box.h*adj});
       CNV.drawText({x: Math.round(box.w/2),
                   y: Math.round(box.h/2),
