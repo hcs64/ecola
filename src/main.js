@@ -931,7 +931,6 @@ window.addEventListener('wheel', function (e) {
   const zfe = document.getElementById('zoom-factor');
   
   zfe.textContent = SEMANTIC_ZOOM + ' ' + DEEPEST + ' ' + SHRINK_CUTOFF + ' ' + SHRINK_ROLLOFF;
-  e.preventDefault();
 });
 
 window.addEventListener('hashchange', function () {
