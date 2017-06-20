@@ -23,6 +23,7 @@ let DEEPEST;
 let SHRINK_CUTOFF;
 let SHRINK_ROLLOFF;
 
+let ZOOMING_BOX;
 let ZOOM_CHANGED;
 let LAST_ZOOM_COORDS;
 
@@ -45,10 +46,13 @@ const resetGlobals = function () {
   WARN_HOLD = false;
   SAVE_HASH = '#';
   CANCEL_PROMPT = null;
+
   SEMANTIC_ZOOM = 0;
   DEEPEST = 0;
   SHRINK_CUTOFF = 0;
   SHRINK_ROLLOFF = 0;
+
+  ZOOMING_BOX = null;
   ZOOM_CHANGED = false;
   LAST_ZOOM_COORDS = null;
 };
@@ -62,7 +66,9 @@ const LEVEL_HUES = [[240],[0]];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
+const ZOOM_LEVEL_PIXELS = 300;
 const MIN_SHRINK = 5 / BOX_PAD;
+const TOO_SMALL_THRESH = 0.75;
 
 const SAVE_LINK = document.getElementById('save-link');
 const PROMPT_INPUT = document.getElementById('prompt-input');
@@ -391,12 +397,12 @@ const setZoom = function (newZoom, p) {
 }
 
 const updateZoom = function() {
-  if (SEMANTIC_ZOOM < -300*DEEPEST) {
-    SEMANTIC_ZOOM = -300*DEEPEST;
+  if (SEMANTIC_ZOOM < -ZOOM_LEVEL_PIXELS * DEEPEST) {
+    SEMANTIC_ZOOM = -ZOOM_LEVEL_PIXELS * DEEPEST;
   }
 
   if (SEMANTIC_ZOOM < 0) {
-    const nz = SEMANTIC_ZOOM/-300;
+    const nz = SEMANTIC_ZOOM / -ZOOM_LEVEL_PIXELS;
     const rnz = Math.floor(nz);
     SHRINK_CUTOFF = DEEPEST - rnz;
     SHRINK_ROLLOFF = Math.max(1 - (nz - rnz), MIN_SHRINK);
@@ -424,9 +430,27 @@ const getShrinkage = function (box, noRowBonus) {
 
 };
 
+const zoomToBox = function (box, touch) {
+  if (getShrinkage(box) > TOO_SMALL_THRESH) {
+    return;
+  }
+  let minLevel = DEEPEST - box.level;
+  if (box.rows.length !== 0) {
+    minLevel --;
+  }
+  setZoom(-ZOOM_LEVEL_PIXELS * minLevel, touch);
+};
+
 const adjustForPanAndZoom = function ({x,y}) {
   return {x: x - PAN_TRANSLATE.x,
           y: y - PAN_TRANSLATE.y};
+};
+
+const lerp = function (start, end, t, tmin, tmax) {
+  return (t-tmin)/(tmax-tmin) * (end-start) + start;
+};
+const roundLerp = function (start, end, t, tmin, tmax, round) {
+  return Math.round(lerp(start, end, t, tmin, tmax) * round) / round;
 };
 
 const setTextAttributes = function () {
@@ -500,16 +524,14 @@ const drawBox = function (box, idx) {
 
   // TODO: Just precompute this stuff for each level? Or at least
   // stash these calculations for level and row in a function.
-  // Also these shouldn't be magical numbers poppin' off the dome,
-  // should use a lerp function.
   const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
   let levelVal;
 
   if (box.rows.length > 0) {
     const s = getShrinkage(box, true);
-    levelVal = Math.round((s * 12 + 85) * 4) / 4;
+    levelVal = roundLerp(85, 97, s, 0, 1, 4);
   } else {
-    levelVal = Math.round((scale * 27 + 70) * 4) / 4;
+    levelVal = roundLerp(70, 97, scale, 0, 1, 4);
   }
   const levelHSL = `hsl(${levelHue},100%,${levelVal}%)`;
 
@@ -521,8 +543,8 @@ const drawBox = function (box, idx) {
     
     CNV.enterRel({x: row.x, y: row.y});
 
-    if (scale >= .75) {
-      const rowVal = Math.round((101 - scale * 6) * 4) / 4;
+    if (scale >= TOO_SMALL_THRESH) {
+      const rowVal = roundLerp(95, 97, scale, 1, TOO_SMALL_THRESH, 4)
       const rowHSL = `hsl(${levelHue},100%,${rowVal}%)`;
 
       CNV.drawRect({x: 0, y: 0, w: box.w, h: row.h, fill: rowHSL});
@@ -837,10 +859,8 @@ GET_TOUCHY(CNV.element, {
     TARGET_BOX = findIntersectingBox({x, y});
 
     if (TARGET_BOX) {
-      if (getShrinkage(TARGET_BOX) !== 1) {
-        // TODO: the check here should be for .5 or some threshold, probably
-        // with bigger BOX_PAD to start with. Need some way to indicate this
-        // visually besides it just not working.
+      if (getShrinkage(TARGET_BOX) < TOO_SMALL_THRESH) {
+        ZOOMING_BOX = TARGET_BOX;
         TARGET_BOX = null;
       } else {
         ({region: TARGET_REGION} = chooseTarget({x, y}, TARGET_BOX));
@@ -886,6 +906,9 @@ GET_TOUCHY(CNV.element, {
       PANNING = false;
     } else if (WARN_HOLD) {
       //
+    } else if (ZOOMING_BOX) {
+        zoomToBox(ZOOMING_BOX, TOUCH_ORIGIN);
+        ZOOMING_BOX = null;
     } else {
       if (TARGET_BOX) {
         // a box has been targeted, what to do?
