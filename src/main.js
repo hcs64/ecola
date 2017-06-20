@@ -16,7 +16,10 @@ let TARGET_REGION;
 let WARN_HOLD;
 let SAVE_HASH;
 let CANCEL_PROMPT;
-let ZOOM_LEVEL;
+let SEMANTIC_ZOOM;
+let DEEPEST;
+let SHRINK_CUTOFF;
+let SHRINK_ROLLOFF;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -36,7 +39,10 @@ const resetGlobals = function () {
   WARN_HOLD = false;
   SAVE_HASH = '#';
   CANCEL_PROMPT = null;
-  ZOOM_LEVEL = 0;
+  SEMANTIC_ZOOM = 0;
+  DEEPEST = 0;
+  SHRINK_CUTOFF = 0;
+  SHRINK_ROLLOFF = 0;
 };
 
 const TARGET_LINE_WIDTH = 15;
@@ -49,6 +55,7 @@ const LEVEL_COLORS = ['#e8e8ff', '#ffe8e8', '#e0ffe0'];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
+const MIN_SHRINK = 5 / BOX_PAD;
 
 const SAVE_LINK = document.getElementById('save-link');
 const PROMPT_INPUT = document.getElementById('prompt-input');
@@ -65,7 +72,7 @@ const ESC_SYM = '~';
 
   under
   x, y: relative to row if under exists, else absolute
-  w, h
+  w, h: now only temporary, generated through updateAllBoxes
   level: >= 0
   rows[x]: {
     x, y: relative to under
@@ -76,6 +83,7 @@ const ESC_SYM = '~';
   idx: index in whatever array this box is in (currently cells or BOXES)
   rowIdx: row within under, in this case idx is the index in cells
   text
+  textWidth
 */
 
 const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
@@ -153,7 +161,7 @@ const chooseTarget = function (p, under) {
         if (lx < row.cells[0].x) {
           // add at start of row
           targetIdx = 0;
-          region = {x: 0, y: row.y, w: BOX_PAD, h: row.h};
+          region = {x: 0, y: row.y, w: row.x, h: row.h};
         } else {
           for (let i = 0; i < row.cells.length - 1; i ++) {
             const cell = row.cells[i];
@@ -172,7 +180,7 @@ const chooseTarget = function (p, under) {
             targetIdx = row.cells.length;
             const lastCell = row.cells[row.cells.length-1];
             region = {x: lastCell.x + lastCell.w, y: row.y,
-                      w: BOX_PAD, h: row.h};
+                      w: row.w - (lastCell.x + lastCell.w), h: row.h};
           }
         }
         break;
@@ -182,7 +190,8 @@ const chooseTarget = function (p, under) {
           // add new row in the middle
           targetRowIdx = ri + 1;
           targetIdx = 0;
-          region = {x: 0, y: row.y + row.h, w: under.w, h: BOX_PAD};
+          region = {x: 0, y: row.y + row.h, w: under.w,
+                    h: nextRow.y - (row.y + row.h)};
           break;
         }
       }
@@ -192,7 +201,8 @@ const chooseTarget = function (p, under) {
       targetRowIdx = under.rows.length;
       targetIdx = 0;
       const lastRow = under.rows[under.rows.length-1];
-      region = {x: 0, y: lastRow.y + lastRow.h, w: under.w, h: BOX_PAD};
+      region = {x: 0, y: lastRow.y + lastRow.h, w: under.w,
+                h: under.h - (lastRow.y + lastRow.h)};
     }
   }
 
@@ -206,6 +216,7 @@ const createNewBox = function (p, under = null) {
 
   if (under) {
     newBox.level = under.level + 1;
+    updateDeepestAndZoom(newBox.level);
 
     let {targetRow, targetRowIdx, targetIdx} = chooseTarget(p, under);
 
@@ -216,8 +227,6 @@ const createNewBox = function (p, under = null) {
     targetRow.cells.splice(targetIdx, 0, newBox);
 
     reindexRows(under.rows);
-    updateRowCells(targetRow);
-    updateBoxRows(under);
 
   } else {
     newBox.x = p.x - BOX_PAD;
@@ -247,13 +256,17 @@ const removeBox = function (box) {
       reindexRows(under.rows);
     } else {
       reindexBoxes(row.cells);
-      updateRowCells(row);
     }
 
-    updateBoxRows(under);
   } else {
     removed = BOXES.splice(idx, 1)[0];
     reindexBoxes();
+  }
+
+  if (BOXES.length > 0) {
+    recalculateDeepest(BOXES[0]);
+  } else {
+    DEEPEST = 0;
   }
 
   return removed;
@@ -275,51 +288,58 @@ const reindexRows = function (rows) {
 };
 
 const updateBoxRows = function (box, callUp = true) {
-  // Set position for the rows of this box based on the sizes of the boxes
-  // they contain, then set the size of this box from that.
+  // Set position for the rows of this box based on their sizes, then set the
+  // size of this box from that.
   // Also calls up to update the parent box since this box's size could
   // have changed (updateRowCells on the row this box is in and updateBoxRows
   // on the parent box)
 
-  // TODO: would be good to have a setting to force updating the parent, for
+  // TODO: might be useful to have a setting to force updating the parent, for
   // when something is reparented, so that we could then have a check for
   // whether the box size changed; if unchanged then don't bother to update.
+  const s = shrinkage(box.level);
   let w = 0;
   let h = 0;
 
   box.rows.forEach(function (row) {
     row.x = 0;
-    row.y = BOX_PAD + h;
+    row.y = BOX_PAD * s + h;
 
     w = Math.max(w, row.w);
-    h += row.h + BOX_PAD;
+    h += row.h + BOX_PAD * s;
   });
 
   if (box.rows.length === 0) {
-    box.w = BOX_PAD * 2;
-    box.h = BOX_PAD;
+    if (typeof box.textWidth === 'number') {
+      box.w = (BOX_PAD + box.textWidth) * s;
+      box.h = FONT_SIZE * 1.5 * s;
+    } else {
+      box.w = BOX_PAD * 2 * s;
+      box.h = BOX_PAD * s;
+    }
   } else {
     box.w = w;
-    box.h = h + BOX_PAD;
+    box.h = h + BOX_PAD * s;
   }
 
   if (callUp && box.under) {
-    updateRowCells(box.under.rows[box.rowIdx]);
+    updateRowCells(box.under.rows[box.rowIdx], box.level);
     updateBoxRows(box.under);
   }
 };
 
-const updateRowCells = function (row) {
+const updateRowCells = function (row, level) {
   // Set the position of each cell (box) based on the size of previous boxes,
   // and update the size of the row.
+  const s = shrinkage(level);
   let h = 0;
-  let w = BOX_PAD;
+  let w = BOX_PAD * s;
 
   row.cells.forEach(function (cell, idx) {
     cell.x = w;
     cell.y = 0;
 
-    w += cell.w + BOX_PAD;
+    w += cell.w + BOX_PAD * s;
     h = Math.max(h, cell.h);
   });
 
@@ -331,22 +351,74 @@ const zoomFactor = function (zoom) {
   return Math.pow(2, zoom/100);
 };
 
-const updateZoom = function(newZoom, center) {
-  const z1 = zoomFactor(ZOOM_LEVEL);
-  const z2 = zoomFactor(newZoom)
-  ZOOM_LEVEL = newZoom;
 
-  const adj = 1 - z2/z1;
-  PAN_TRANSLATE.x += (center.x - PAN_TRANSLATE.x) * adj;
-  PAN_TRANSLATE.y += (center.y - PAN_TRANSLATE.y) * adj;
+const updateDeepestAndZoom = function (level) {
+  if (level > DEEPEST) {
+    DEEPEST = level;
+    updateZoom();
+  }
+};
+
+const recalculateDeepestInner = function (box) {
+  DEEPEST = Math.max(DEEPEST, box.level);
+  box.rows.forEach(function (row) {
+    row.cells.forEach(function (cell) {
+      recalculateDeepestInner(cell);
+    });
+  });
+};
+
+const recalculateDeepest = function (box) {
+  DEEPEST = 0;
+  recalculateDeepestInner(box);
+  updateZoom();
+};
+
+const updateAllBoxesInner = function (box) {
+  box.rows.forEach(function (row) {
+    row.cells.forEach(function (cell) {
+      updateAllBoxesInner(cell);
+    });
+    updateRowCells(row, box.level);
+  });
+  updateBoxRows(box, false);
+};
+const updateAllBoxes = function () {
+  BOXES.forEach(updateAllBoxesInner);
+};
+
+
+const updateZoom = function(newZoom = SEMANTIC_ZOOM) {
+  if (newZoom < 0) {
+    SEMANTIC_ZOOM = newZoom;
+    const nz = SEMANTIC_ZOOM/-100;
+    const rnz = Math.floor(nz);
+    SHRINK_CUTOFF = rnz;
+    SHRINK_ROLLOFF = 1 - (nz - rnz);
+    console.log(SHRINK_CUTOFF, SHRINK_ROLLOFF, DEEPEST);
+  } else {
+    SEMANTIC_ZOOM = 0;
+    SHRINK_CUTOFF = -1;
+    SHRINK_ROLLOFF = 1;
+  }
 
   requestDraw();
 };
 
+const shrinkage = function (level) {
+  const cutoff = DEEPEST - SHRINK_CUTOFF;
+  if (level > cutoff) {
+    return MIN_SHRINK;
+  } else if (level === cutoff) {
+    return Math.max(SHRINK_ROLLOFF, MIN_SHRINK);
+  } else {
+    return 1;
+  }
+};
+
 const adjustForPanAndZoom = function ({x,y}) {
-  const zf = zoomFactor(ZOOM_LEVEL);
-  return {x: (x - PAN_TRANSLATE.x)/zf,
-          y: (y - PAN_TRANSLATE.y)/zf};
+  return {x: x - PAN_TRANSLATE.x,
+          y: y - PAN_TRANSLATE.y};
 };
 
 const requestDraw = function () {
@@ -358,6 +430,8 @@ const requestDraw = function () {
 const draw = function () {
   DRAW_REQUEST_IN_FLIGHT = false;
 
+  updateAllBoxes();
+
   CNV.clear();
 
   CNV.context.textAlign = 'center';
@@ -365,8 +439,7 @@ const draw = function () {
   CNV.context.font = FONT_SIZE + 'px Arial';
 
   CNV.enterRel({x: PAN_TRANSLATE.x + TEMP_PAN_TRANSLATE.x,
-                y: PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y,
-                zoom: zoomFactor(ZOOM_LEVEL)});
+                y: PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y});
 
   BOXES.forEach(drawBox);
 
@@ -391,9 +464,17 @@ const drawBox = function (box, idx) {
   });
 
   if (typeof box.text === 'string' && box.text.length > 0) {
-    CNV.drawText({x: Math.round(box.w/2),
+    const s = shrinkage(box.level);
+    if (s > MIN_SHRINK) {
+      const adj = (1-s)/2/s;
+      CNV.enterRel({zoom: s});
+      CNV.enterRel({x: box.w*adj, y: box.h*adj});
+      CNV.drawText({x: Math.round(box.w/2),
                   y: Math.round(box.h/2),
                   msg: box.text, fill: '#000000'});
+      CNV.exitRel();
+      CNV.exitRel();
+    }
   }
 
   if (box === TARGET_BOX) {
@@ -502,17 +583,9 @@ const boxFromString = function (str, level, i) {
         if (curRow && curRow.cells.length === 0) {
           throw 'empty last row';
         }
-        if (box.rows.length === 0) {
-          // size of an empty box
-          box.w = BOX_PAD * 2;
-          box.h = BOX_PAD;
-        } else {
+        if (box.rows.length > 0) {
           // row and cell indexes
           reindexRows(box.rows);
-          // set sizes of rows and relative position of children
-          box.rows.forEach(updateRowCells);
-          // set positions of rows and size of this box,
-          updateBoxRows(box, false);
         }
         return {box, i};
       case ROW_SYM:
@@ -571,6 +644,8 @@ const loadFromHash = function () {
         box.y = BOX_PAD * 2;
         BOXES = [box];
         reindexBoxes();
+
+        recalculateDeepest(box);
 
         updateSaveHash();
 
@@ -664,15 +739,10 @@ const cancelPromptText = function (submitHandler) {
 const tagBox = function (box, text) {
   if (typeof text === 'string' && text !== '') {
     box.text = text;
-    const width = CNV.context.measureText(text).width;
-    box.w = width + BOX_PAD;
-    box.h = BOX_PAD;
-    if (box.under) {
-      updateRowCells(box.under.rows[box.rowIdx]);
-      updateBoxRows(box.under);
-    }
+    box.textWidth = CNV.context.measureText(text).width;
   } else {
     delete box.text;
+    delete box.textWidth;
   }
   requestDraw();
 };
@@ -681,6 +751,7 @@ const tagBox = function (box, text) {
 
 resetGlobals();
 loadFromHash();
+updateZoom();
 
 GET_TOUCHY(CNV.element, {
   touchStart: function (p) {
@@ -794,7 +865,11 @@ window.addEventListener('wheel', function (e) {
 
   delta = Math.min(20, Math.max(-20, delta));
 
-  updateZoom(ZOOM_LEVEL - delta, {x: mx, y: my});
+  updateZoom(SEMANTIC_ZOOM - delta, {x: mx, y: my});
+
+  const zfe = document.getElementById('zoom-factor');
+  
+  zfe.textContent = SEMANTIC_ZOOM + ' ' + DEEPEST + ' ' + SHRINK_CUTOFF + ' ' + SHRINK_ROLLOFF;
   e.preventDefault();
 });
 

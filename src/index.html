@@ -8,18 +8,18 @@
 html, body {
   margin: 0;
   padding: 0;
-  overflow: hidden
+  overflow: hidden;
 }
 canvas {
   position: fixed;
   top: 0;
-  left: 0
+  left: 0;
 }
 a#save-link {
   position: fixed;
   top: 10px;
   left: 10px;
-  z-index: 1
+  z-index: 1;
 }
 form#prompt-form {
   background-color: white;
@@ -29,7 +29,13 @@ form#prompt-form {
   z-index: 1;
   visibility: hidden;
   border: bottom 1px;
-  border-style: solid
+  border-style: solid;
+}
+div#zoom-factor {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
 }
 </style>
 </head>
@@ -38,6 +44,7 @@ form#prompt-form {
 <form id="prompt-form"><input id="prompt-input"><br>
 Enter node text, leave blank to create a child node
 </form>
+<div id="zoom-factor"></div>
 <script src="cnvr.js"></script>
 <script src="touchy.js"></script>
 <script src="anim.js"></script>
