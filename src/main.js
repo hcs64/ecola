@@ -875,8 +875,6 @@ GET_TOUCHY(CNV.element, {
       }
     }
 
-    const zfe = document.getElementById('zoom-factor');
-    zfe.textContent = zfe.textContent + 'touchStart';
     requestDraw();
   },
   touchMove: function (p) {
@@ -948,9 +946,6 @@ GET_TOUCHY(CNV.element, {
     TARGET_BOX = null;
     TARGET_REGION = null;
 
-    const zfe = document.getElementById('zoom-factor');
-    zfe.textContent = zfe.textContent + 'touchEnd';
-
     cancelHoldTimeout();
     requestDraw();
   },
@@ -971,8 +966,6 @@ GET_TOUCHY(CNV.element, {
       TARGET_BOX = null;
       TARGET_REGION = null;
     }
-    const zfe = document.getElementById('zoom-factor');
-    zfe.textContent = zfe.textContent + 'touchCancel';
 
     cancelHoldTimeout();
   },
@@ -1020,10 +1013,6 @@ window.addEventListener('wheel', function (e) {
   }
 
   setZoom(SEMANTIC_ZOOM - delta, {x: mx, y: my});
-
-  const zfe = document.getElementById('zoom-factor');
-  
-  zfe.textContent = SEMANTIC_ZOOM + ' ' + DEEPEST + ' ' + SHRINK_CUTOFF + ' ' + SHRINK_ROLLOFF;
 });
 
 window.addEventListener('hashchange', function () {
