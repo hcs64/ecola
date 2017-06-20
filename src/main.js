@@ -16,6 +16,7 @@ let TARGET_REGION;
 let WARN_HOLD;
 let SAVE_HASH;
 let CANCEL_PROMPT;
+let ZOOM_LEVEL;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -35,6 +36,7 @@ const resetGlobals = function () {
   WARN_HOLD = false;
   SAVE_HASH = '#';
   CANCEL_PROMPT = null;
+  ZOOM_LEVEL = 0;
 };
 
 const TARGET_LINE_WIDTH = 15;
@@ -46,6 +48,7 @@ const ROW_COLORS = ['#f0f0ff', '#fff0f0', '#f0fff0'];
 const LEVEL_COLORS = ['#e8e8ff', '#ffe8e8', '#e0ffe0'];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
+const FONT_SIZE = 18;
 
 const SAVE_LINK = document.getElementById('save-link');
 const PROMPT_INPUT = document.getElementById('prompt-input');
@@ -324,9 +327,26 @@ const updateRowCells = function (row) {
   row.h = h;
 };
 
-const adjustForPan = function ({x,y}) {
-  return {x: x - PAN_TRANSLATE.x,
-          y: y - PAN_TRANSLATE.y};
+const zoomFactor = function (zoom) {
+  return Math.pow(2, zoom/100);
+};
+
+const updateZoom = function(newZoom, center) {
+  const z1 = zoomFactor(ZOOM_LEVEL);
+  const z2 = zoomFactor(newZoom)
+  ZOOM_LEVEL = newZoom;
+
+  const adj = 1 - z2/z1;
+  PAN_TRANSLATE.x += (center.x - PAN_TRANSLATE.x) * adj;
+  PAN_TRANSLATE.y += (center.y - PAN_TRANSLATE.y) * adj;
+
+  requestDraw();
+};
+
+const adjustForPanAndZoom = function ({x,y}) {
+  const zf = zoomFactor(ZOOM_LEVEL);
+  return {x: (x - PAN_TRANSLATE.x)/zf,
+          y: (y - PAN_TRANSLATE.y)/zf};
 };
 
 const requestDraw = function () {
@@ -340,8 +360,13 @@ const draw = function () {
 
   CNV.clear();
 
-  CNV.enterRel({x: .5 + PAN_TRANSLATE.x + TEMP_PAN_TRANSLATE.x,
-                y: .5 + PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y});
+  CNV.context.textAlign = 'center';
+  CNV.context.textBaseline = 'middle';
+  CNV.context.font = FONT_SIZE + 'px Arial';
+
+  CNV.enterRel({x: PAN_TRANSLATE.x + TEMP_PAN_TRANSLATE.x,
+                y: PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y,
+                zoom: zoomFactor(ZOOM_LEVEL)});
 
   BOXES.forEach(drawBox);
 
@@ -662,20 +687,21 @@ GET_TOUCHY(CNV.element, {
     if (CANCEL_PROMPT) {
       CANCEL_PROMPT();
     }
-    p = adjustForPan(p);
+    // TOUCH_ORIGIN is in absolute screen units
     TOUCH_ORIGIN = {x: p.x, y: p.y};
 
-    TARGET_BOX = findIntersectingBox({x: p.x, y: p.y});
+    const {x, y} = adjustForPanAndZoom(TOUCH_ORIGIN);
+
+    TARGET_BOX = findIntersectingBox({x, y});
 
     if (TARGET_BOX) {
-      ({region: TARGET_REGION} = chooseTarget(p, TARGET_BOX));
+      ({region: TARGET_REGION} = chooseTarget({x, y}, TARGET_BOX));
       startHoldTimeout1();
     }
 
     requestDraw();
   },
   touchMove: function (p) {
-    p = adjustForPan(p);
     const dist = Math.sqrt(
       Math.pow(TOUCH_ORIGIN.x - p.x, 2) + Math.pow(TOUCH_ORIGIN.y - p.y, 2));
 
@@ -698,7 +724,6 @@ GET_TOUCHY(CNV.element, {
     requestDraw();
   },
   touchEnd: function (p, cancelled) {
-    p = adjustForPan(p);
     if (PANNING) {
       TEMP_PAN_TRANSLATE.x = p.x - TOUCH_ORIGIN.x;
       TEMP_PAN_TRANSLATE.y = p.y - TOUCH_ORIGIN.y;
@@ -729,14 +754,14 @@ GET_TOUCHY(CNV.element, {
         } else {
           // box already has rows, just create a box under this one
           // no prompt
-          createNewBox(TOUCH_ORIGIN, TARGET_BOX);
+          createNewBox(adjustForPanAndZoom(TOUCH_ORIGIN), TARGET_BOX);
         }
 
       } else if (BOXES.length === 0) {
         // nothing targeted, no existing boxes, make a top level box
         // no prompt
         if (!WARN_HOLD) {
-          createNewBox(TOUCH_ORIGIN);
+          createNewBox(adjustForPanAndZoom(TOUCH_ORIGIN));
         }
       }
       // do nothing if a click lands nowhere when there are alredy boxes
@@ -753,6 +778,24 @@ GET_TOUCHY(CNV.element, {
 window.addEventListener('resize', function () {
   CNV.setupCanvas();
   requestDraw();
+});
+
+window.addEventListener('wheel', function (e) {
+  const mx = e.pageX;
+  const my = e.pageY;
+  let delta = e.deltaY;
+
+  if (e.deltaMode === 0x01) {
+    delta *= FONT_SIZE * 1.5;
+  }
+  if (e.deltaMode === 0x02) {
+    delta *= FONT_SIZE * 15;
+  }
+
+  delta = Math.min(20, Math.max(-20, delta));
+
+  updateZoom(ZOOM_LEVEL - delta, {x: mx, y: my});
+  e.preventDefault();
 });
 
 window.addEventListener('hashchange', function () {

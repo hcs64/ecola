@@ -17,9 +17,6 @@ const makeCanvas = function () {
 const setupCanvas = function () {
   cnv.width = window.innerWidth;
   cnv.height = window.innerHeight;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = '18px Arial';
 };
 
 const clear = function () {
@@ -47,9 +44,15 @@ const drawText = function ({x, y, msg, fill}) {
   ctx.fillText(msg, x, y);
 };
 
-const enterRel = function ({x, y}) {
+const enterRel = function ({x, y, zoom}) {
   ctx.save();
-  ctx.translate(x, y);
+  if (typeof x === 'number' && typeof y === 'number') {
+    ctx.translate(x, y);
+  }
+  if (typeof zoom === 'number') {
+    ctx.scale(zoom, zoom);
+  }
+
 };
 
 const exitRel = function () {
