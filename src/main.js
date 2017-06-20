@@ -496,7 +496,13 @@ const drawBox = function (box, idx) {
   CNV.enterRel({x: box.x, y: box.y});
 
   const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
-  const levelVal = Math.round((scale * 27 + 70) * 4) / 4;
+  let levelVal;
+
+  if (box.rows.length > 0) {
+    levelVal = 97;
+  } else {
+    levelVal = Math.round((scale * 27 + 70) * 4) / 4;
+  }
   const levelHSL = `hsl(${levelHue},100%,${levelVal}%)`;
 
   const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h, fill: levelHSL};
@@ -508,7 +514,7 @@ const drawBox = function (box, idx) {
     CNV.enterRel({x: row.x, y: row.y});
 
     if (scale >= .5) {
-      const rowVal = Math.round((scale * 23 + 72) * 4) / 4;
+      const rowVal = Math.round((99 - scale * 4) * 4) / 4;
       const rowHSL = `hsl(${levelHue},100%,${rowVal}%)`;
 
       CNV.drawRect({x: 0, y: 0, w: box.w, h: row.h, fill: rowHSL});
