@@ -27,6 +27,7 @@ let ZOOMING_BOX;
 let ZOOM_CHANGED;
 let LAST_ZOOM_COORDS;
 let PINCH_DISTANCE;
+let ZOOM_TARGET;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -57,6 +58,7 @@ const resetGlobals = function () {
   ZOOM_CHANGED = false;
   LAST_ZOOM_COORDS = null;
   PINCH_DISTANCE = null;
+  ZOOM_TARGET = null;
 };
 
 const TARGET_LINE_WIDTH = 15;
@@ -486,7 +488,11 @@ const draw = function () {
   if (ZOOM_CHANGED && LAST_ZOOM_COORDS) {
     // collect information about where the zoom is focused before it updates,
     // so we can center the zoom there
-    zoomTarget = findIntersectingBox(LAST_ZOOM_COORDS);
+    if (ZOOM_TARGET) {
+      zoomTarget = ZOOM_TARGET;
+    } else {
+      ZOOM_TARGET = findIntersectingBox(LAST_ZOOM_COORDS);
+    }
 
     if (zoomTarget &&
         typeof zoomTarget.w === 'number' && typeof zoomTarget.h === 'number') {
@@ -506,11 +512,15 @@ const draw = function () {
   if (zoomTargetDim) {
     // adjust pan to center on the zoom focus
     const {x: oldx, y: oldy, w: oldw, h: oldh} = zoomTargetDim;
-    const {x: newx, y: newy} = convertToAbsoluteXY(zoomTarget,0,0);
+    const {x: newx, y: newy} = convertToAbsoluteXY(zoomTarget, 0, 0);
     const {w: neww, h: newh} = zoomTarget;
     const {x: zx, y: zy}  = LAST_ZOOM_COORDS;
     PAN_TRANSLATE.x += zx - ((zx - oldx) / oldw * neww + newx);
     PAN_TRANSLATE.y += zy - ((zy - oldy) / oldh * newh + newy);
+
+    if (oldw === neww && oldh === newh && zoomTarget.under) {
+      ZOOM_TARGET = zoomTarget.under;
+    }
   }
 
   // setup canvas context for drawing
@@ -975,11 +985,12 @@ GET_TOUCHY(CNV.element, {
 
   pinchStart: function (touch1, touch2) {
     let x = (touch1.x + touch2.x) / 2;
-    let y = (touch2.y + touch2.y) / 2;
+    let y = (touch1.y + touch2.y) / 2;
     PINCH_DISTANCE =
       Math.sqrt(Math.pow(touch1.x - touch2.x, 2) +
                 Math.pow(touch1.y - touch2.y, 2));
     TOUCH_ORIGIN = {x, y};
+    ZOOM_TARGET = findIntersectingBox(LAST_ZOOM_COORDS);
   },
 
   pinchMove: function (touch1, touch2) {
@@ -994,6 +1005,7 @@ GET_TOUCHY(CNV.element, {
 
   pinchEnd: function (touch1, touch2) {
     PINCH_DISTANCE = null;
+    ZOOM_TARGET = null;
   },
 
 });
