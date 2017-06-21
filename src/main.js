@@ -539,15 +539,22 @@ const drawBox = function (box, idx) {
   const scale = getShrinkage(box);
   CNV.enterRel({x: box.x, y: box.y});
 
+  // TODO: detection of clipping, should be easy with rects to see if
+  // they are fully clipped
+
   // TODO: Just precompute this stuff for each level? Or at least
   // stash these calculations for level and row in a function.
   const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
   let levelVal;
 
   if (box.rows.length > 0) {
-    const s = getShrinkage(box, true);
-    levelVal = roundLerp(85, 97, s, 0, 1, 4);
+    if (scale > TOO_SMALL_THRESH) {
+      levelVal = roundLerp(95, 97, scale, 1, TOO_SMALL_THRESH, 4)
+    } else {
+      levelVal = 97;
+    }
   } else {
+    // leaf boxes get darker
     levelVal = roundLerp(70, 97, scale, 0, 1, 4);
   }
   const levelHSL = `hsl(${levelHue},100%,${levelVal}%)`;
@@ -556,14 +563,15 @@ const drawBox = function (box, idx) {
 
   CNV.drawRect(rectAttrs);
 
+
+  const rowVal = roundLerp(85, 97, getShrinkage(box, true), 0, 1, 4);
+  const rowHSL = `hsl(${levelHue},100%,${rowVal}%)`;
+
   box.rows.forEach(function (row) {
     
     CNV.enterRel({x: row.x, y: row.y});
 
-    if (scale >= TOO_SMALL_THRESH) {
-      const rowVal = roundLerp(95, 97, scale, 1, TOO_SMALL_THRESH, 4)
-      const rowHSL = `hsl(${levelHue},100%,${rowVal}%)`;
-
+    if (scale > TOO_SMALL_THRESH) {
       CNV.drawRect({x: 0, y: 0, w: box.w, h: row.h, fill: rowHSL});
     }
 
