@@ -21,7 +21,9 @@ let CANCEL_PROMPT;
 let SEMANTIC_ZOOM;
 let DEEPEST;
 let SHRINK_CUTOFF;
-let SHRINK_ROLLOFF;
+let SHRINK_ROLLOFF0;
+let SHRINK_ROLLOFF1;
+let SHRINK_ROLLOFF2;
 
 let ZOOMING_BOX;
 let ZOOM_CHANGED;
@@ -52,7 +54,9 @@ const resetGlobals = function () {
   SEMANTIC_ZOOM = 0;
   DEEPEST = 0;
   SHRINK_CUTOFF = 0;
-  SHRINK_ROLLOFF = 0;
+  SHRINK_ROLLOFF0 = 0;
+  SHRINK_ROLLOFF1 = 0;
+  SHRINK_ROLLOFF2 = 0;
 
   ZOOMING_BOX = null;
   ZOOM_CHANGED = false;
@@ -71,7 +75,7 @@ const LEVEL_HUES = [[240],[0]];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
-const ZOOM_LEVEL_PIXELS = 300;
+const ZOOM_LEVEL_PIXELS = 150;
 const MIN_SHRINK = MIN_PAD / BOX_PAD;
 const TOO_SMALL_THRESH = 0.75;
 
@@ -414,11 +418,16 @@ const updateZoom = function() {
     const nz = SEMANTIC_ZOOM / -ZOOM_LEVEL_PIXELS;
     const rnz = Math.floor(nz);
     SHRINK_CUTOFF = DEEPEST - rnz;
-    SHRINK_ROLLOFF = Math.max(1 - (nz - rnz), MIN_SHRINK);
+    const s = 1 - (nz - rnz);
+    SHRINK_ROLLOFF0 = Math.max(s, MIN_SHRINK*4);
+    SHRINK_ROLLOFF1 = MIN_SHRINK * lerp01(2, 4, s);
+    SHRINK_ROLLOFF2 = MIN_SHRINK * lerp01(1, 2, s);
   } else {
     SEMANTIC_ZOOM = 0;
     SHRINK_CUTOFF = DEEPEST;
-    SHRINK_ROLLOFF = 1;
+    SHRINK_ROLLOFF0 = 1;
+    SHRINK_ROLLOFF1 = 1;
+    SHRINK_ROLLOFF2 = 1;
   }
 
   requestDraw();
@@ -429,10 +438,15 @@ const getShrinkage = function (box, noRowBonus) {
   if (box.rows.length !== 0 && !noRowBonus) {
     level ++;
   }
-  if (level > SHRINK_CUTOFF) {
+
+  if (level > SHRINK_CUTOFF + 2) {
     return MIN_SHRINK;
+  } else if (level === SHRINK_CUTOFF + 2) {
+    return SHRINK_ROLLOFF2; 
+  } else if (level === SHRINK_CUTOFF + 1) {
+    return SHRINK_ROLLOFF1;
   } else if (level === SHRINK_CUTOFF) {
-    return SHRINK_ROLLOFF;
+    return SHRINK_ROLLOFF0;
   } else {
     return 1;
   }
@@ -460,8 +474,11 @@ const adjustForPanAndZoom = function ({x,y}) {
           y: y - PAN_TRANSLATE.y};
 };
 
+const lerp01 = function (start, end, t) {
+  return t * (end-start) + start;
+};
 const lerp = function (start, end, t, tmin, tmax) {
-  return (t-tmin)/(tmax-tmin) * (end-start) + start;
+  return lerp01(start, end, (t-tmin)/(tmax-tmin));
 };
 const roundLerp = function (start, end, t, tmin, tmax, round) {
   return Math.round(lerp(start, end, t, tmin, tmax) * round) / round;
@@ -470,7 +487,7 @@ const roundLerp = function (start, end, t, tmin, tmax, round) {
 const setTextAttributes = function () {
   CNV.context.textAlign = 'center';
   CNV.context.textBaseline = 'middle';
-  CNV.context.font = FONT_SIZE + 'px Arial';
+  CNV.context.font = FONT_SIZE + 'px serif';
 };
 
 const requestDraw = function () {
@@ -579,6 +596,7 @@ const drawBox = function (box, idx) {
     CNV.exitRel();
   });
 
+  // draw text
   if (typeof box.text === 'string' && box.text.length > 0) {
     if (scale > MIN_SHRINK) {
       const adj = (1-scale)/2/scale;
@@ -594,6 +612,7 @@ const drawBox = function (box, idx) {
     }
   }
 
+  // draw warning box
   if (box === TARGET_BOX) {
     CNV.context.lineWidth = TARGET_LINE_WIDTH;
 
