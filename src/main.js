@@ -554,8 +554,8 @@ const drawBox = function (box, idx) {
       levelVal = 97;
     }
   } else {
-    // leaf boxes get darker
-    levelVal = roundLerp(70, 97, scale, 0, 1, 4);
+    // leaf boxes start darker and get darker on zoom out
+    levelVal = roundLerp(70, 96, scale, 0, 1, 4);
   }
   const levelHSL = `hsl(${levelHue},100%,${levelVal}%)`;
 
