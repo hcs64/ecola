@@ -1,6 +1,6 @@
 /* exported GET_TOUCHY */
 
-const GET_TOUCHY = function(elem, cb){
+const GET_TOUCHY = function (elem, cb){
 'use strict';
 
 let curTouches = [];

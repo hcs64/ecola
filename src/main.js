@@ -10,10 +10,7 @@ let PAN_TRANSLATE;
 let TEMP_PAN_TRANSLATE;
 let DRAW_REQUEST_IN_FLIGHT;
 let TOUCH_ORIGIN;
-let HOLD_TIMEOUT1_ID;
-let HOLD_TIMEOUT2_ID;
 let TARGET_BOX;
-let WARN_HOLD;
 let SAVE_HASH;
 let CANCEL_PROMPT;
 
@@ -31,6 +28,8 @@ let LAST_ZOOM_COORDS;
 let PINCH_DISTANCE;
 let ZOOM_TARGET;
 
+let SELECTED_BOX;
+
 const resetGlobals = function () {
   BOXES = [];
   BOX_CHANGED = true;
@@ -42,11 +41,7 @@ const resetGlobals = function () {
   }
   DRAW_REQUEST_IN_FLIGHT = false;
   TOUCH_ORIGIN = {x: 0, y: 0};
-  cancelHoldTimeout();
-  HOLD_TIMEOUT1_ID = null;
-  HOLD_TIMEOUT2_ID = null;
   TARGET_BOX = null;
-  WARN_HOLD = false;
   SAVE_HASH = '#';
   CANCEL_PROMPT = null;
 
@@ -63,26 +58,30 @@ const resetGlobals = function () {
   LAST_ZOOM_COORDS = null;
   PINCH_DISTANCE = null;
   ZOOM_TARGET = null;
+
+  SELECTED_BOX = null;
 };
 
-const TARGET_LINE_WIDTH = 15;
 const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
-const HANDLE_PX = 40;
-const BOX_BORDER_PX = 4;
-const EMPTY_WIDTH_PX = 120;
-const EMPTY_BOX_WIDTH_PX = EMPTY_WIDTH_PX + 2 * BOX_BORDER_PX;
-const EMPTY_BOX_HEIGHT_PX = HANDLE_PX + 2 * BOX_BORDER_PX;
-const MIN_TEXT_WIDTH = HANDLE_PX;
+const HANDLE_WIDTH = 40;
+const BOX_BORDER = 4;
+const EMPTY_WIDTH = 120;
+const EMPTY_BOX_WIDTH = EMPTY_WIDTH + 2 * BOX_BORDER;
+const EMPTY_BOX_HEIGHT = HANDLE_WIDTH + 2 * BOX_BORDER;
+const MIN_TEXT_WIDTH = HANDLE_WIDTH;
 const LEVEL_HUES = [[240],[0]];
-const TARGET_COLOR = '#000000';
-const WARN_COLOR = '#ff0000';
+const TEXT_COLOR = '#000000';
 const FONT_SIZE = 18;
 const ZOOM_LEVEL_PIXELS = 80;
 const SHRINK0 = 1/2;
 const MIN_SHRINK = SHRINK0/16;
 const TOO_SMALL_THRESH = 0.75;
+
+const SELECTION_LINE_WIDTH = 5;
+const SELECTION_LINE_COLOR = '#808080';
+const SELECTION_TEXT_COLOR = '#808080';
 
 const SAVE_LINK = document.getElementById('save-link');
 const PROMPT_INPUT = document.getElementById('prompt-input');
@@ -176,8 +175,8 @@ const createNewBox = function (p, under = null) {
     newBox.idx = BOXES.indexOf(newBox);
   }
 
-  newBox.w = EMPTY_BOX_WIDTH_PX;
-  newBox.h = EMPTY_BOX_HEIGHT_PX;
+  newBox.w = EMPTY_BOX_WIDTH;
+  newBox.h = EMPTY_BOX_HEIGHT;
 
   if (!under) {
     newBox.x = p.x - newBox.w/2
@@ -241,29 +240,29 @@ const updateBoxRows = function (box, callUp = true) {
   // on the parent box)
 
   const hs = getHandleShrinkage(box);
-  const handle = HANDLE_PX * hs;
+  const handle = HANDLE_WIDTH * hs;
   let w = 0;
-  let h = BOX_BORDER_PX;
+  let h = BOX_BORDER;
 
   box.rows.forEach(function (row) {
-    row.x = BOX_BORDER_PX + handle;
+    row.x = BOX_BORDER + handle;
     row.y = h;
 
     w = Math.max(w, row.w);
-    h += row.h + BOX_BORDER_PX;
+    h += row.h + BOX_BORDER;
   });
 
   if (box.rows.length === 0) {
     const s = getTextShrinkage(box);
     if (typeof box.textWidth === 'number') {
-      box.w = BOX_BORDER_PX * 2 + (box.textWidth * s);
-      box.h = BOX_BORDER_PX * 2 + FONT_SIZE * 1.5 * s;
+      box.w = BOX_BORDER * 2 + (box.textWidth * s);
+      box.h = BOX_BORDER * 2 + FONT_SIZE * 1.5 * s;
     } else {
-      box.w = EMPTY_BOX_WIDTH_PX * s;
-      box.h = EMPTY_BOX_HEIGHT_PX * s;
+      box.w = EMPTY_BOX_WIDTH * s;
+      box.h = EMPTY_BOX_HEIGHT * s;
     }
   } else {
-    box.w = w + 2 * BOX_BORDER_PX + handle;
+    box.w = w + 2 * BOX_BORDER + handle;
     box.h = h;
   }
 
@@ -283,11 +282,11 @@ const updateRowCells = function (row, box) {
     cell.x = w;
     cell.y = 0;
 
-    w += cell.w + BOX_BORDER_PX;
+    w += cell.w + BOX_BORDER;
     h = Math.max(h, cell.h);
   });
 
-  row.w = w - BOX_BORDER_PX;
+  row.w = w - BOX_BORDER;
   row.h = h;
 };
 
@@ -520,6 +519,11 @@ const drawBox = function (box, idx) {
   if (typeof box.text === 'string' && box.text.length > 0) {
     const scale = getTextShrinkage(box);
     if (scale > MIN_SHRINK) {
+      let textColor = TEXT_COLOR;
+
+      if (SELECTED_BOX) {
+        textColor = SELECTION_TEXT_COLOR;
+      }
       const adj = (1-scale)/2/scale;
       // TODO: CNVR should support this without two levels, probably just
       // do saving manually
@@ -527,66 +531,21 @@ const drawBox = function (box, idx) {
       CNV.enterRel({x: box.w*adj, y: box.h*adj});
       CNV.drawText({x: Math.round(box.w/2),
                   y: Math.round(box.h/2),
-                  msg: box.text, fill: '#000000'});
+                  msg: box.text, fill: textColor});
       CNV.exitRel();
       CNV.exitRel();
     }
   }
 
-  // draw warning box
-  if (box === TARGET_BOX) {
-    CNV.context.lineWidth = TARGET_LINE_WIDTH;
+  if (box === SELECTED_BOX) {
+    rectAttrs.fill = null;
+    CNV.context.lineWidth = SELECTION_LINE_WIDTH;
+    rectAttrs.stroke = SELECTION_LINE_COLOR;
 
-    if (WARN_HOLD) {
-      CNV.drawRect(
-        {x: 0, y: 0, w: box.w, h: box.h, stroke: WARN_COLOR});
-    }
+    CNV.drawRect(rectAttrs);
   }
 
   CNV.exitRel();
-};
-
-const startHoldTimeout1 = function () {
-  if (typeof HOLD_TIMEOUT1_ID === 'number') {
-    window.clearTimeout(HOLD_TIMEOUT1_ID);
-  }
-  HOLD_TIMEOUT1_ID = window.setTimeout(handleHoldTimeout1, HOLD_TIMEOUT1_MS);
-};
-
-const startHoldTimeout2 = function () {
-  if (typeof HOLD_TIMEOUT2_ID === 'number') {
-    window.clearTimeout(HOLD_TIMEOUT2_ID);
-  }
-  HOLD_TIMEOUT2_ID = window.setTimeout(handleHoldTimeout2, HOLD_TIMEOUT2_MS);
-};
-
-const cancelHoldTimeout = function () {
-  WARN_HOLD = false;
-
-  if (typeof HOLD_TIMEOUT1_ID === 'number') {
-    window.clearTimeout(HOLD_TIMEOUT1_ID)
-    HOLD_TIMEOUT1_ID = null;
-  }
-  if (typeof HOLD_TIMEOUT2_ID === 'number') {
-    window.clearTimeout(HOLD_TIMEOUT2_ID)
-    HOLD_TIMEOUT2_ID = null;
-  }
-};
-
-const handleHoldTimeout1 = function () {
-  WARN_HOLD = true;
-
-  requestDraw();
-
-  startHoldTimeout2();
-};
-
-const handleHoldTimeout2 = function () {
-  if (WARN_HOLD) {
-    removeBox(TARGET_BOX);
-    TARGET_BOX = null;
-    requestDraw();
-  }
 };
 
 const boxFromString = function (str, level, i) {
@@ -807,6 +766,17 @@ const tagBox = function (box, text) {
   requestDraw();
 };
 
+const menuDismissed = function () {
+  SELECTED_BOX = null;
+  requestDraw();
+};
+
+const menuCallbacks = {
+  menuDismissed
+};
+
+const MENU = MENUR(menuCallbacks);
+
 // main code starts here
 
 resetGlobals();
@@ -828,8 +798,6 @@ GET_TOUCHY(CNV.element, {
       if (getHandleShrinkage(TARGET_BOX) < TOO_SMALL_THRESH) {
         ZOOMING_BOX = TARGET_BOX;
         TARGET_BOX = null;
-      } else {
-        startHoldTimeout1();
       }
     }
 
@@ -841,7 +809,6 @@ GET_TOUCHY(CNV.element, {
 
     if (!PANNING && dist >= PAN_DIST) {
       PANNING = true;
-      cancelHoldTimeout();
 
       TARGET_BOX = null;
       ZOOMING_BOX = null;
@@ -865,44 +832,19 @@ GET_TOUCHY(CNV.element, {
       TEMP_PAN_TRANSLATE.y = 0;
 
       PANNING = false;
-    } else if (WARN_HOLD) {
-      //
     } else if (ZOOMING_BOX) {
-        zoomToBox(ZOOMING_BOX, TOUCH_ORIGIN);
-        ZOOMING_BOX = null;
+      zoomToBox(ZOOMING_BOX, TOUCH_ORIGIN);
+      MENU.show();
+      // TODO: probably a bad idea
+      SELECTED_BOX = ZOOMING_BOX;
+      ZOOMING_BOX = null;
     } else {
-      if (TARGET_BOX) {
-        // a box has been targeted, what to do?
-        if (TARGET_BOX.rows.length === 0) {
-          // nothing is in this box yet, give a chance to enter text
-          const targetBoxCopy = TARGET_BOX;
-          promptText(TARGET_BOX.text, function (text) {
-            tagBox(targetBoxCopy, text);
-            if (text.length === 0) {
-              // position doesn't matter with the second param set
-              createNewBox({x:0,y:0}, targetBoxCopy);
-            }
-          });
-
-        } else {
-          // box already has rows, just create a box under this one
-          // no prompt
-          createNewBox(adjustForPanAndZoom(TOUCH_ORIGIN), TARGET_BOX);
-        }
-
-      } else if (BOXES.length === 0) {
-        // nothing targeted, no existing boxes, make a top level box
-        // no prompt
-        if (!WARN_HOLD) {
-          createNewBox(adjustForPanAndZoom(TOUCH_ORIGIN));
-        }
-      }
-      // do nothing if a click lands nowhere when there are alredy boxes
+      MENU.show();
+      SELECTED_BOX = TARGET_BOX;
     }
 
     TARGET_BOX = null;
 
-    cancelHoldTimeout();
     requestDraw();
   },
   touchCancel: function () {
@@ -914,15 +856,12 @@ GET_TOUCHY(CNV.element, {
       TEMP_PAN_TRANSLATE.y = 0;
 
       PANNING = false;
-    } else if (WARN_HOLD) {
-      //
     } else if (ZOOMING_BOX) {
       ZOOMING_BOX = null;
     } else {
       TARGET_BOX = null;
     }
 
-    cancelHoldTimeout();
   },
 
   pinchStart: function (touch1, touch2) {

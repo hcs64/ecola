@@ -10,37 +10,69 @@ html, body {
   padding: 0;
   overflow: hidden;
 }
+
 canvas {
   position: fixed;
   top: 0;
   left: 0;
 }
+
 a#save-link {
   position: fixed;
-  top: 10px;
+  bottom: 10px;
   left: 10px;
-  z-index: 1;
+  z-index: 2;
 }
-form#prompt-form {
-  background-color: white;
+
+div#menu {
+  visibility: hidden;
   position: fixed;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
   z-index: 1;
-  visibility: hidden;
-  border: bottom 1px;
-  border-style: solid;
 }
+
+div#menu-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: white;
+  opacity: 0.6;
+}
+
+table#menu-table {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  height: 100%;
+  max-height: 500px;
+  margin: auto;
+}
+
+table#menu-table td {
+  height: 25%;
+  outline: 1px solid;
+  width: 25%;
+  padding 10px;
+  vertical-align: middle;
+  text-align: center;
+}
+
 </style>
 </head>
 <body>
 <a href="#" id="save-link">Save</a>
-<form id="prompt-form"><input id="prompt-input"><br>
-Enter node text, leave blank to create a child node
-</form>
+<div id="menu">
+<div id="menu-bg"></div>
+</div>
 <script src="cnvr.js"></script>
 <script src="touchy.js"></script>
 <script src="anim.js"></script>
+<script src="menur.js"></script>
 <script src="main.js"></script>
 </body>
 </html>
