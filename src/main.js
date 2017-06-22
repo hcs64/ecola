@@ -501,7 +501,8 @@ const drawBox = function (box, idx) {
   // they are fully clipped
 
   const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
-  let levelLum = 90;
+  let levelLum = roundLerp(92, 80, getHandleShrinkage(box), 1, 0, 4);
+
   const levelHSL = `hsl(${levelHue},80%,${levelLum}%)`;
 
   const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h, fill: levelHSL};
@@ -698,6 +699,7 @@ const loadFromHash = function () {
         box.y = 0;
         reindexBoxes();
         zoomOut();
+        setZoom(SEMANTIC_ZOOM + ZOOM_LEVEL_PIXELS);
         updateAllBoxes();
         box.x = (window.innerWidth - box.w)/2;
         box.y = (window.innerHeight - box.h)/2;
