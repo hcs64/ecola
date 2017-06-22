@@ -419,6 +419,9 @@ const updateZoom = function() {
     const rnz = Math.floor(nz);
     SHRINK_CUTOFF = DEEPEST - rnz;
     const s = 1 - (nz - rnz);
+    if (MIN_SHRINK*4 >= 1) {
+      throw 'bad MIN_SHRINK';
+    }
     SHRINK_ROLLOFF0 = Math.max(s, MIN_SHRINK*4);
     SHRINK_ROLLOFF1 = MIN_SHRINK * lerp01(2, 4, s);
     SHRINK_ROLLOFF2 = MIN_SHRINK * lerp01(1, 2, s);
@@ -508,7 +511,7 @@ const draw = function () {
     if (ZOOM_TARGET) {
       zoomTarget = ZOOM_TARGET;
     } else {
-      ZOOM_TARGET = findIntersectingBox(LAST_ZOOM_COORDS);
+      zoomTarget = findIntersectingBox(LAST_ZOOM_COORDS);
     }
 
     if (zoomTarget &&
@@ -534,10 +537,6 @@ const draw = function () {
     const {x: zx, y: zy}  = LAST_ZOOM_COORDS;
     PAN_TRANSLATE.x += zx - ((zx - oldx) / oldw * neww + newx);
     PAN_TRANSLATE.y += zy - ((zy - oldy) / oldh * newh + newy);
-
-    if (oldw === neww && oldh === newh && zoomTarget.under) {
-      ZOOM_TARGET = zoomTarget.under;
-    }
   }
 
   // setup canvas context for drawing
