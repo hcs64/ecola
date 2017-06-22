@@ -21,6 +21,7 @@ let CANCEL_PROMPT;
 let SEMANTIC_ZOOM;
 let DEEPEST;
 let SHRINK_CUTOFF;
+let HANDLE_SHRINK_ROLLOFF;
 let SHRINK_ROLLOFF0;
 let SHRINK_ROLLOFF1;
 let SHRINK_ROLLOFF2;
@@ -54,6 +55,7 @@ const resetGlobals = function () {
   SEMANTIC_ZOOM = 0;
   DEEPEST = 0;
   SHRINK_CUTOFF = 0;
+  HANDLE_SHRINK_ROLLOFF = 0;
   SHRINK_ROLLOFF0 = 0;
   SHRINK_ROLLOFF1 = 0;
   SHRINK_ROLLOFF2 = 0;
@@ -81,7 +83,7 @@ const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
 const ZOOM_LEVEL_PIXELS = 80;
 const SHRINK0 = 1/2;
-const MIN_SHRINK = SHRINK0/4;
+const MIN_SHRINK = SHRINK0/16;
 const TOO_SMALL_THRESH = 0.75;
 
 const SAVE_LINK = document.getElementById('save-link');
@@ -318,12 +320,13 @@ const updateBoxRows = function (box, callUp = true) {
   // have changed (updateRowCells on the row this box is in and updateBoxRows
   // on the parent box)
 
-  const s = getShrinkage(box);
+  const hs = getHandleShrinkage(box);
+  const handle = HANDLE_PX * hs;
   let w = 0;
   let h = BOX_BORDER_PX;
 
   box.rows.forEach(function (row) {
-    row.x = 0;
+    row.x = BOX_BORDER_PX + handle;
     row.y = h;
 
     w = Math.max(w, row.w);
@@ -332,6 +335,7 @@ const updateBoxRows = function (box, callUp = true) {
 
   if (box.rows.length === 0) {
     if (typeof box.textWidth === 'number') {
+      const s = getTextShrinkage(box);
       box.w = BOX_BORDER_PX * 2 + (box.textWidth * s);
       box.h = BOX_BORDER_PX * 2 + FONT_SIZE * 1.5 * s;
     } else {
@@ -339,8 +343,8 @@ const updateBoxRows = function (box, callUp = true) {
       box.h = EMPTY_BOX_HEIGHT_PX;
     }
   } else {
-    box.w = w;
-    box.h = h + HANDLE_PX * s;
+    box.w = w + 2 * BOX_BORDER_PX + handle;
+    box.h = h;
   }
 
   if (callUp && box.under) {
@@ -352,9 +356,8 @@ const updateBoxRows = function (box, callUp = true) {
 const updateRowCells = function (row, box) {
   // Set the position of each cell (box) based on the size of previous boxes,
   // and update the size of the row.
-  const s = getShrinkage(box);
   let h = 0;
-  let w = BOX_BORDER_PX;
+  let w = 0;
 
   row.cells.forEach(function (cell, idx) {
     cell.x = w;
@@ -364,7 +367,7 @@ const updateRowCells = function (row, box) {
     h = Math.max(h, cell.h);
   });
 
-  row.w = w;
+  row.w = w - BOX_BORDER_PX;
   row.h = h;
 };
 
@@ -424,9 +427,10 @@ const updateZoom = function() {
     const rnz = Math.floor(nz);
     SHRINK_CUTOFF = DEEPEST - rnz;
     const s = 1 - (nz - rnz);
+    HANDLE_SHRINK_ROLLOFF = s;
     SHRINK_ROLLOFF0 = Math.max(s, SHRINK0);
-    SHRINK_ROLLOFF1 = SHRINK0 * lerp01(.5, 1, s);
-    SHRINK_ROLLOFF2 = SHRINK0 * lerp01(.25, .5, s);
+    SHRINK_ROLLOFF1 = SHRINK0 * lerp01(.25, 1, s);
+    SHRINK_ROLLOFF2 = SHRINK0 * lerp01(.0625, .25, s);
   } else {
     SEMANTIC_ZOOM = 0;
     SHRINK_CUTOFF = DEEPEST;
@@ -438,7 +442,23 @@ const updateZoom = function() {
   requestDraw();
 };
 
-const getShrinkage = function (box, noRowBonus) {
+const getHandleShrinkage = function (box, noRowBonus) {
+  let level = box.level;
+  if (box.rows.length !== 0 && !noRowBonus) {
+    level ++;
+  }
+
+  if (level > SHRINK_CUTOFF) {
+    return 0;
+  } else if (level === SHRINK_CUTOFF) {
+    return HANDLE_SHRINK_ROLLOFF;
+  } else {
+    return 1;
+  }
+
+};
+
+const getTextShrinkage = function (box, noRowBonus) {
   let level = box.level;
   if (box.rows.length !== 0 && !noRowBonus) {
     level ++;
@@ -459,7 +479,7 @@ const getShrinkage = function (box, noRowBonus) {
 };
 
 const zoomToBox = function (box, touch) {
-  if (getShrinkage(box) > TOO_SMALL_THRESH) {
+  if (getHandleShrinkage(box) > TOO_SMALL_THRESH) {
     return;
   }
   let minLevel = DEEPEST - box.level;
@@ -554,29 +574,14 @@ const draw = function () {
 };
 
 const drawBox = function (box, idx) {
-  const scale = getShrinkage(box);
   CNV.enterRel({x: box.x, y: box.y});
 
   // TODO: detection of clipping, should be easy with rects to see if
   // they are fully clipped
 
-  // TODO: Just precompute this stuff for each level? Or at least
-  // stash these calculations for level and row in a function.
   const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
-  let levelVal;
-
-  if (box.rows.length > 0) {
-    const s = getShrinkage(box, true);
-    if (s > SHRINK0) {
-      levelVal = roundLerp(85, 96, getShrinkage(box, true), SHRINK0, 1, 4);
-    } else {
-      levelVal = 85;
-    }
-  } else {
-    // leaf boxes start darker and get darker on zoom out
-    levelVal = roundLerp(70, 94, scale, 0, 1, 4);
-  }
-  const levelHSL = `hsl(${levelHue},100%,${levelVal}%)`;
+  let levelLum = 90;
+  const levelHSL = `hsl(${levelHue},80%,${levelLum}%)`;
 
   const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h, fill: levelHSL};
 
@@ -591,6 +596,7 @@ const drawBox = function (box, idx) {
 
   // draw text
   if (typeof box.text === 'string' && box.text.length > 0) {
+    const scale = getTextShrinkage(box);
     if (scale > MIN_SHRINK) {
       const adj = (1-scale)/2/scale;
       // TODO: CNVR should support this without two levels, probably just
@@ -899,7 +905,7 @@ GET_TOUCHY(CNV.element, {
     TARGET_BOX = findIntersectingBox({x, y});
 
     if (TARGET_BOX) {
-      if (getShrinkage(TARGET_BOX) < TOO_SMALL_THRESH) {
+      if (getHandleShrinkage(TARGET_BOX) < TOO_SMALL_THRESH) {
         ZOOMING_BOX = TARGET_BOX;
         TARGET_BOX = null;
       } else {
