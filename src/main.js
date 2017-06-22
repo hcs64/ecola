@@ -83,9 +83,9 @@ const SELECTION_LINE_WIDTH = 5;
 const SELECTION_LINE_COLOR = '#808080';
 const SELECTION_TEXT_COLOR = '#808080';
 
-const SAVE_LINK = document.getElementById('save-link');
 const PROMPT_INPUT = document.getElementById('prompt-input');
 const PROMPT_FORM = document.getElementById('prompt-form');
+const PROMPT = document.getElementById('prompt');
 
 const OPEN_SYM = '(';
 const CLOSE_SYM = ')';
@@ -164,12 +164,6 @@ const createNewBox = function (p, under = null) {
 
   if (under) {
     newBox.level = under.level + 1;
-
-    const targetRow = {cells: [newBox]};
-    under.rows.splice(0, 0, targetRow);
-
-    reindexRows(under.rows);
-
   } else {
     BOXES.push(newBox);
     newBox.idx = BOXES.indexOf(newBox);
@@ -444,6 +438,8 @@ const requestDraw = function () {
 const draw = function () {
   DRAW_REQUEST_IN_FLIGHT = false;
 
+  // TODO: we could get here with boxes in a bad state before updateAllBoxes,
+  // everything before that should be made to expect it
   let zoomTarget = null;
   let zoomTargetDim = null;
 
@@ -716,6 +712,10 @@ const updateSaveHash = function () {
   SAVE_HASH = '#' + encodeURIComponent(str);
 };
 
+const save = function () {
+  updateSaveHash();
+  window.history.replaceState(undefined, undefined, SAVE_HASH);
+};
 
 const promptText = function (init, cb) {
   if (typeof init !== 'string') {
@@ -726,7 +726,7 @@ const promptText = function (init, cb) {
     CANCEL_PROMPT();
   }
 
-  PROMPT_FORM.style.visibility = 'visible';
+  PROMPT.style.visibility = 'visible';
 
   const submitHandler = function (e) {
     const value = PROMPT_INPUT.value;
@@ -748,7 +748,7 @@ const promptText = function (init, cb) {
 const cancelPromptText = function (submitHandler) {
   PROMPT_INPUT.blur();
   PROMPT_INPUT.value = '';
-  PROMPT_FORM.style.visibility = 'hidden'
+  PROMPT.style.visibility = 'hidden'
   PROMPT_FORM.removeEventListener('submit', submitHandler);
   CANCEL_PROMPT = null;
 };
@@ -766,12 +766,124 @@ const tagBox = function (box, text) {
   requestDraw();
 };
 
-const menuDismissed = function () {
-  SELECTED_BOX = null;
+const menuDismissed = function (v) {
+  if (typeof v === 'object' && v.dontDeselect) {
+    //
+    console.log('got dontDeselect');
+  } else {
+    SELECTED_BOX = null;
+  }
   requestDraw();
 };
 
+const menuAdd = function (text, prev, row) {
+  if (!SELECTED_BOX.under) {
+    // TODO: don't show buttons that aren't usable?
+    return;
+  }
+
+  const rowIdx = SELECTED_BOX.rowIdx;
+  const idx = SELECTED_BOX.idx;
+  const under = SELECTED_BOX.under;
+
+  const newBox = createNewBox(null, under);
+
+  if (row) {
+    const rows = under.rows;
+    const newRow = {cells:[newBox]};
+    if (prev) {
+      rows.splice(rowIdx, 0, newRow);
+    } else {
+      rows.splice(rowIdx + 1, 0, newRow);
+    }
+    reindexRows(rows);
+  } else {
+    const cells = under.rows[rowIdx].cells;
+    if (prev) {
+      cells.splice(idx, 0, newBox);
+    } else {
+      cells.splice(idx + 1, 0, newBox);
+    }
+    reindexBoxes(cells);
+    newBox.rowIdx = rowIdx;
+  }
+
+  if (text) {
+    const myBox = newBox;
+    promptText('', function (text) {
+      tagBox(myBox, text);
+      SELECTED_BOX = null;
+    });
+
+    SELECTED_BOX = newBox;
+    return {dontDeselect: true};
+  }
+};
+
+const menuEdit = function () {
+  const myBox = SELECTED_BOX;
+  promptText(myBox.text, function (text) {
+    tagBox(myBox, text);
+    SELECTED_BOX = null;
+  });
+
+  return {dontDeselect: true};
+};
+
+const menuCopy = function () {
+  // TODO: save somewhere
+};
+
+const menuCut = function () {
+  // TODO: actually save somewhere
+  removeBox(SELECTED_BOX);
+  requestDraw();
+};
+
+const menuPaste = function () {
+  // TODO: retrieve from save, update everything
+};
+
+const menuEnclose = function () {
+  if (!SELECTED_BOX.under) {
+    // TODO: implement or remove the button
+    return;
+  }
+
+  const box = SELECTED_BOX;
+  const under = box.under
+
+  // make a new box, put it where this box was
+  const newBox = createNewBox(null, box.under);
+  under.rows[box.rowIdx].cells[box.idx] = newBox;
+  newBox.rowIdx = box.rowIdx;
+  newBox.idx = box.idx;
+
+  // move this box into the new box
+  const newRow = {cells: [box]};
+  newBox.rows.push(newRow);
+  box.under = newBox;
+  box.level = newBox.level + 1;
+  box.rowIdx = 0;
+  box.idx = 0;
+
+  requestDraw();
+};
+
+const undo = function () {
+  // TODO: 
+};
+
 const menuCallbacks = {
+  add: menuAdd,
+  edit: menuEdit,
+  copy: menuCopy,
+  cut: menuCut,
+  paste: menuPaste,
+  enclose: menuEnclose,
+  save,
+  undo,
+
   menuDismissed
 };
 
@@ -916,12 +1028,6 @@ window.addEventListener('hashchange', function () {
   if (window.location.hash !== SAVE_HASH) {
     loadFromHash();
   }
-});
-
-SAVE_LINK.addEventListener('click', function (e) {
-  updateSaveHash();
-  window.history.replaceState(undefined, undefined, SAVE_HASH);
-  e.preventDefault();
 });
 
 })();

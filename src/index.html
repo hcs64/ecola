@@ -17,14 +17,7 @@ canvas {
   left: 0;
 }
 
-a#save-link {
-  position: fixed;
-  bottom: 10px;
-  left: 10px;
-  z-index: 2;
-}
-
-div#menu {
+div.fullscreen {
   visibility: hidden;
   position: fixed;
   top: 0;
@@ -34,7 +27,7 @@ div#menu {
   z-index: 1;
 }
 
-div#menu-bg {
+div.bg {
   position: absolute;
   top: 0;
   left: 0;
@@ -42,6 +35,18 @@ div#menu-bg {
   height: 100%;
   background: white;
   opacity: 0.6;
+}
+
+form#prompt-form {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  margin: auto;
+  font-size: 20px;
+}
+
+form#prompt-form input[type=text] {
+  height: 20px;
 }
 
 table#menu-table {
@@ -55,19 +60,29 @@ table#menu-table {
 
 table#menu-table td {
   height: 25%;
-  outline: 1px solid;
   width: 25%;
   padding 10px;
   vertical-align: middle;
   text-align: center;
 }
 
+td.mb-filled {
+  outline: 2px solid;
+}
+
 </style>
 </head>
 <body>
-<a href="#" id="save-link">Save</a>
-<div id="menu">
-<div id="menu-bg"></div>
+<div id="prompt" class="fullscreen">
+<div class="bg"></div>
+<form id="prompt-form">
+Enter text<br>
+<input id="prompt-input" type="text">
+</form>
+</div>
+
+<div id="menu" class="fullscreen">
+<div class="bg"></div>
 </div>
 <script src="cnvr.js"></script>
 <script src="touchy.js"></script>
