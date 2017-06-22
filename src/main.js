@@ -13,7 +13,6 @@ let TOUCH_ORIGIN;
 let HOLD_TIMEOUT1_ID;
 let HOLD_TIMEOUT2_ID;
 let TARGET_BOX;
-let TARGET_REGION;
 let WARN_HOLD;
 let SAVE_HASH;
 let CANCEL_PROMPT;
@@ -47,7 +46,6 @@ const resetGlobals = function () {
   HOLD_TIMEOUT1_ID = null;
   HOLD_TIMEOUT2_ID = null;
   TARGET_BOX = null;
-  TARGET_REGION = null;
   WARN_HOLD = false;
   SAVE_HASH = '#';
   CANCEL_PROMPT = null;
@@ -161,98 +159,15 @@ const convertToAbsoluteXY = function (box, x, y) {
   return {x: x + box.x, y: y + box.y}
 };
 
-const chooseTarget = function (p, under) {
-  let targetRow = null;
-  let targetRowIdx = -1;
-  let targetIdx = -1;
-  let region = null;
-
-  const {x: lx, y: ly} = convertToBoxXY(under, p.x, p.y);
-
-  if (under.rows.length === 0) {
-    // always add first row on top
-    targetRowIdx = 0;
-    targetIdx = 0;
-    region = {x: 0, y: 0, w: under.w, h: under.h};
-  } else if (ly < under.rows[0].y) {
-    // add new row to top
-    targetRowIdx = 0;
-    targetIdx = 0;
-    region = {x: 0, y: 0, w: under.w, h: under.rows[0].y};
-  } else {
-    for (let ri = 0; ri < under.rows.length; ri ++) {
-      const row = under.rows[ri];
-      if (ly >= row.y && ly < row.y + row.h) {
-        // add to existing row
-        targetRow = row;
-        targetRowIdx = ri;
-
-        if (lx < row.cells[0].x) {
-          // add at start of row
-          targetIdx = 0;
-          region = {x: 0, y: row.y, w: row.cells[0].x, h: row.h};
-        } else {
-          for (let i = 0; i < row.cells.length - 1; i ++) {
-            const cell = row.cells[i];
-            const nextCell = row.cells[i+1];
-            if (lx >= cell.x + cell.w && lx < nextCell.x) {
-              // add between cells
-              targetIdx = i+1;
-              region = {x: cell.x + cell.w, y: row.y,
-                        w: nextCell.x - (cell.x + cell.w), h: row.h};
-              break;
-            }
-          }
-
-          if (targetIdx === -1) {
-            // add at end of row
-            targetIdx = row.cells.length;
-            const lastCell = row.cells[row.cells.length-1];
-            region = {x: lastCell.x + lastCell.w, y: row.y,
-                      w: row.w - (lastCell.x + lastCell.w), h: row.h};
-          }
-        }
-        break;
-      } else if (ri < under.rows.length - 1) {
-        const nextRow = under.rows[ri+1];
-        if (ly >= row.y + row.h && ly < nextRow.y) {
-          // add new row in the middle
-          targetRowIdx = ri + 1;
-          targetIdx = 0;
-          region = {x: 0, y: row.y + row.h, w: under.w,
-                    h: nextRow.y - (row.y + row.h)};
-          break;
-        }
-      }
-    }
-    if (targetRowIdx === -1) {
-      // add new row to bottom
-      targetRowIdx = under.rows.length;
-      targetIdx = 0;
-      const lastRow = under.rows[under.rows.length-1];
-      region = {x: 0, y: lastRow.y + lastRow.h, w: under.w,
-                h: under.h - (lastRow.y + lastRow.h)};
-    }
-  }
-
-  return {targetRow, targetRowIdx, targetIdx, region};
-}
-
 const createNewBox = function (p, under = null) {
   const newBox = {x: 0, y: 0,
-                  w: EMPTY_BOX_WIDTH_PX, h: EMPTY_BOX_HEIGHT_PX,
                   rows: [], under, level: 0};
 
   if (under) {
     newBox.level = under.level + 1;
 
-    let {targetRow, targetRowIdx, targetIdx} = chooseTarget(p, under);
-
-    if (!targetRow) {
-      targetRow = {cells: []};
-      under.rows.splice(targetRowIdx, 0, targetRow);
-    }
-    targetRow.cells.splice(targetIdx, 0, newBox);
+    const targetRow = {cells: [newBox]};
+    under.rows.splice(0, 0, targetRow);
 
     reindexRows(under.rows);
 
@@ -263,6 +178,10 @@ const createNewBox = function (p, under = null) {
     BOXES.push(newBox);
     newBox.idx = BOXES.indexOf(newBox);
   }
+
+  const scale = getTextShrinkage(newBox);
+  newBox.w = EMPTY_BOX_WIDTH_PX * scale;
+  newBox.h = EMPTY_BOX_HEIGHT_PX * scale;
 
   BOX_CHANGED = true;
 
@@ -334,13 +253,13 @@ const updateBoxRows = function (box, callUp = true) {
   });
 
   if (box.rows.length === 0) {
+    const s = getTextShrinkage(box);
     if (typeof box.textWidth === 'number') {
-      const s = getTextShrinkage(box);
       box.w = BOX_BORDER_PX * 2 + (box.textWidth * s);
       box.h = BOX_BORDER_PX * 2 + FONT_SIZE * 1.5 * s;
     } else {
-      box.w = EMPTY_BOX_WIDTH_PX;
-      box.h = EMPTY_BOX_HEIGHT_PX;
+      box.w = EMPTY_BOX_WIDTH_PX * s;
+      box.h = EMPTY_BOX_HEIGHT_PX * s;
     }
   } else {
     box.w = w + 2 * BOX_BORDER_PX + handle;
@@ -434,6 +353,7 @@ const updateZoom = function() {
   } else {
     SEMANTIC_ZOOM = 0;
     SHRINK_CUTOFF = DEEPEST;
+    HANDLE_SHRINK_ROLLOFF = 1;
     SHRINK_ROLLOFF0 = 1;
     SHRINK_ROLLOFF1 = 1;
     SHRINK_ROLLOFF2 = 1;
@@ -618,9 +538,6 @@ const drawBox = function (box, idx) {
     if (WARN_HOLD) {
       CNV.drawRect(
         {x: 0, y: 0, w: box.w, h: box.h, stroke: WARN_COLOR});
-    } else if (TARGET_REGION) {
-      const {x,y,w,h} = TARGET_REGION;
-      CNV.drawRect({x,y,w,h, stroke: TARGET_COLOR});
     }
   }
 
@@ -779,7 +696,8 @@ const loadFromHash = function () {
         box.x = 0;
         box.y = 0;
         reindexBoxes();
-        zoomOut();
+        recalculateDeepest();
+        setZoom(0);
         updateAllBoxes();
         box.x = (window.innerWidth - box.w)/2;
         box.y = (window.innerHeight - box.h)/2;
@@ -909,7 +827,6 @@ GET_TOUCHY(CNV.element, {
         ZOOMING_BOX = TARGET_BOX;
         TARGET_BOX = null;
       } else {
-        //({region: TARGET_REGION} = chooseTarget({x, y}, TARGET_BOX));
         startHoldTimeout1();
       }
     }
@@ -925,7 +842,6 @@ GET_TOUCHY(CNV.element, {
       cancelHoldTimeout();
 
       TARGET_BOX = null;
-      TARGET_REGION = null;
       ZOOMING_BOX = null;
     }
 
@@ -983,7 +899,6 @@ GET_TOUCHY(CNV.element, {
     }
 
     TARGET_BOX = null;
-    TARGET_REGION = null;
 
     cancelHoldTimeout();
     requestDraw();
@@ -1003,7 +918,6 @@ GET_TOUCHY(CNV.element, {
       ZOOMING_BOX = null;
     } else {
       TARGET_BOX = null;
-      TARGET_REGION = null;
     }
 
     cancelHoldTimeout();
