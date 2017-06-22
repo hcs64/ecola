@@ -172,16 +172,17 @@ const createNewBox = function (p, under = null) {
     reindexRows(under.rows);
 
   } else {
-    newBox.x = p.x - newBox.h/2;
-    newBox.y = p.y - newBox.y/2;
-
     BOXES.push(newBox);
     newBox.idx = BOXES.indexOf(newBox);
   }
 
-  const scale = getTextShrinkage(newBox);
-  newBox.w = EMPTY_BOX_WIDTH_PX * scale;
-  newBox.h = EMPTY_BOX_HEIGHT_PX * scale;
+  newBox.w = EMPTY_BOX_WIDTH_PX;
+  newBox.h = EMPTY_BOX_HEIGHT_PX;
+
+  if (!under) {
+    newBox.x = p.x - newBox.w/2
+    newBox.y = p.y - newBox.h/2;
+  }
 
   BOX_CHANGED = true;
 
@@ -696,8 +697,7 @@ const loadFromHash = function () {
         box.x = 0;
         box.y = 0;
         reindexBoxes();
-        recalculateDeepest();
-        setZoom(0);
+        zoomOut();
         updateAllBoxes();
         box.x = (window.innerWidth - box.w)/2;
         box.y = (window.innerHeight - box.h)/2;
