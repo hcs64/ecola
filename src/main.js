@@ -69,12 +69,17 @@ const TARGET_LINE_WIDTH = 15;
 const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
-const BOX_PAD = 40;
+const HANDLE_PX = 40;
+const BOX_BORDER_PX = 4;
+const EMPTY_WIDTH_PX = 120;
+const EMPTY_BOX_WIDTH_PX = EMPTY_WIDTH_PX + 2 * BOX_BORDER_PX;
+const EMPTY_BOX_HEIGHT_PX = HANDLE_PX + 2 * BOX_BORDER_PX;
+const MIN_TEXT_WIDTH = HANDLE_PX;
 const LEVEL_HUES = [[240],[0]];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
-const ZOOM_LEVEL_PIXELS = 150;
+const ZOOM_LEVEL_PIXELS = 80;
 const SHRINK0 = 1/2;
 const MIN_SHRINK = SHRINK0/4;
 const TOO_SMALL_THRESH = 0.75;
@@ -233,7 +238,7 @@ const chooseTarget = function (p, under) {
 
 const createNewBox = function (p, under = null) {
   const newBox = {x: 0, y: 0,
-                  w: BOX_PAD*2, h: BOX_PAD,
+                  w: EMPTY_BOX_WIDTH_PX, h: EMPTY_BOX_HEIGHT_PX,
                   rows: [], under, level: 0};
 
   if (under) {
@@ -250,8 +255,8 @@ const createNewBox = function (p, under = null) {
     reindexRows(under.rows);
 
   } else {
-    newBox.x = p.x - BOX_PAD;
-    newBox.y = p.y - Math.round(BOX_PAD/2);
+    newBox.x = p.x - newBox.h/2;
+    newBox.y = p.y - newBox.y/2;
 
     BOXES.push(newBox);
     newBox.idx = BOXES.indexOf(newBox);
@@ -315,27 +320,27 @@ const updateBoxRows = function (box, callUp = true) {
 
   const s = getShrinkage(box);
   let w = 0;
-  let h = 0;
+  let h = BOX_BORDER_PX;
 
   box.rows.forEach(function (row) {
     row.x = 0;
-    row.y = BOX_PAD * s + h;
+    row.y = h;
 
     w = Math.max(w, row.w);
-    h += row.h + BOX_PAD * s;
+    h += row.h + BOX_BORDER_PX;
   });
 
   if (box.rows.length === 0) {
     if (typeof box.textWidth === 'number') {
-      box.w = (BOX_PAD + box.textWidth) * s;
-      box.h = FONT_SIZE * 1.5 * s;
+      box.w = BOX_BORDER_PX * 2 + (box.textWidth * s);
+      box.h = BOX_BORDER_PX * 2 + FONT_SIZE * 1.5 * s;
     } else {
-      box.w = BOX_PAD * 2 * s;
-      box.h = BOX_PAD * s;
+      box.w = EMPTY_BOX_WIDTH_PX;
+      box.h = EMPTY_BOX_HEIGHT_PX;
     }
   } else {
     box.w = w;
-    box.h = h + BOX_PAD * s;
+    box.h = h + HANDLE_PX * s;
   }
 
   if (callUp && box.under) {
@@ -349,13 +354,13 @@ const updateRowCells = function (row, box) {
   // and update the size of the row.
   const s = getShrinkage(box);
   let h = 0;
-  let w = BOX_PAD * s;
+  let w = BOX_BORDER_PX;
 
   row.cells.forEach(function (cell, idx) {
     cell.x = w;
     cell.y = 0;
 
-    w += cell.w + BOX_PAD * s;
+    w += cell.w + BOX_BORDER_PX;
     h = Math.max(h, cell.h);
   });
 
@@ -561,14 +566,15 @@ const drawBox = function (box, idx) {
   let levelVal;
 
   if (box.rows.length > 0) {
-    if (scale > TOO_SMALL_THRESH) {
-      levelVal = roundLerp(95, 97, scale, 1, TOO_SMALL_THRESH, 4)
+    const s = getShrinkage(box, true);
+    if (s > SHRINK0) {
+      levelVal = roundLerp(85, 96, getShrinkage(box, true), SHRINK0, 1, 4);
     } else {
-      levelVal = 97;
+      levelVal = 85;
     }
   } else {
     // leaf boxes start darker and get darker on zoom out
-    levelVal = roundLerp(70, 96, scale, 0, 1, 4);
+    levelVal = roundLerp(70, 94, scale, 0, 1, 4);
   }
   const levelHSL = `hsl(${levelHue},100%,${levelVal}%)`;
 
@@ -576,18 +582,9 @@ const drawBox = function (box, idx) {
 
   CNV.drawRect(rectAttrs);
 
-
-  const rowVal = roundLerp(85, 97, getShrinkage(box, true), 0, 1, 4);
-  const rowHSL = `hsl(${levelHue},100%,${rowVal}%)`;
-
+  // draw rows, containing cells
   box.rows.forEach(function (row) {
-    
     CNV.enterRel({x: row.x, y: row.y});
-
-    if (scale > TOO_SMALL_THRESH) {
-      CNV.drawRect({x: 0, y: 0, w: box.w, h: row.h, fill: rowHSL});
-    }
-
     row.cells.forEach(drawBox);
     CNV.exitRel();
   });
@@ -875,7 +872,7 @@ const tagBox = function (box, text) {
   if (typeof text === 'string' && text !== '') {
     box.text = text;
     setTextAttributes();
-    box.textWidth = CNV.context.measureText(text).width;
+    box.textWidth = Math.max(MIN_TEXT_WIDTH, CNV.context.measureText(text).width);
   } else {
     delete box.text;
     delete box.textWidth;
