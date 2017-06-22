@@ -70,13 +70,13 @@ const HOLD_TIMEOUT1_MS = 500;
 const HOLD_TIMEOUT2_MS = 500;
 const PAN_DIST = 20;
 const BOX_PAD = 40;
-const MIN_PAD = 6;
 const LEVEL_HUES = [[240],[0]];
 const TARGET_COLOR = '#000000';
 const WARN_COLOR = '#ff0000';
 const FONT_SIZE = 18;
 const ZOOM_LEVEL_PIXELS = 150;
-const MIN_SHRINK = MIN_PAD / BOX_PAD;
+const SHRINK0 = 1/2;
+const MIN_SHRINK = SHRINK0/4;
 const TOO_SMALL_THRESH = 0.75;
 
 const SAVE_LINK = document.getElementById('save-link');
@@ -419,12 +419,9 @@ const updateZoom = function() {
     const rnz = Math.floor(nz);
     SHRINK_CUTOFF = DEEPEST - rnz;
     const s = 1 - (nz - rnz);
-    if (MIN_SHRINK*4 >= 1) {
-      throw 'bad MIN_SHRINK';
-    }
-    SHRINK_ROLLOFF0 = Math.max(s, MIN_SHRINK*4);
-    SHRINK_ROLLOFF1 = MIN_SHRINK * lerp01(2, 4, s);
-    SHRINK_ROLLOFF2 = MIN_SHRINK * lerp01(1, 2, s);
+    SHRINK_ROLLOFF0 = Math.max(s, SHRINK0);
+    SHRINK_ROLLOFF1 = SHRINK0 * lerp01(.5, 1, s);
+    SHRINK_ROLLOFF2 = SHRINK0 * lerp01(.25, .5, s);
   } else {
     SEMANTIC_ZOOM = 0;
     SHRINK_CUTOFF = DEEPEST;
@@ -469,7 +466,7 @@ const zoomToBox = function (box, touch) {
 
 const zoomOut = function () {
   recalculateDeepest();
-  setZoom(-ZOOM_LEVEL_PIXELS * DEEPEST, null);
+  setZoom(-ZOOM_LEVEL_PIXELS * DEEPEST - 1, null);
 };
 
 const adjustForPanAndZoom = function ({x,y}) {
