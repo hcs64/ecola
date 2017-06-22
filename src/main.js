@@ -158,9 +158,8 @@ const convertToAbsoluteXY = function (box, x, y) {
   return {x: x + box.x, y: y + box.y}
 };
 
-const createNewBox = function (p, under = null) {
-  const newBox = {x: 0, y: 0,
-                  rows: [], under, level: 0};
+const createBox = function (p, under = null) {
+  const newBox = {x: 0, y: 0, rows: [], under, level: 0};
 
   if (under) {
     newBox.level = under.level + 1;
@@ -288,11 +287,12 @@ const zoomFactor = function (zoom) {
   return Math.pow(2, zoom/100);
 };
 
-const recalculateDeepestInner = function (box) {
-  DEEPEST = Math.max(DEEPEST, box.level);
+const recalculateDeepestInner = function (box, depth) {
+  box.level = depth;
+  DEEPEST = Math.max(DEEPEST, depth);
   box.rows.forEach(function (row) {
     row.cells.forEach(function (cell) {
-      recalculateDeepestInner(cell);
+      recalculateDeepestInner(cell, depth + 1);
     });
   });
 };
@@ -300,7 +300,7 @@ const recalculateDeepestInner = function (box) {
 const recalculateDeepest = function (box) {
   DEEPEST = 0;
   if (BOXES.length > 0) {
-    recalculateDeepestInner(BOXES[0]);
+    recalculateDeepestInner(BOXES[0], 0);
   }
   updateZoom();
 };
@@ -778,7 +778,6 @@ const menuDismissed = function (v) {
 
 const menuAdd = function (text, prev, row) {
   if (!SELECTED_BOX.under) {
-    // TODO: don't show buttons that aren't usable?
     return;
   }
 
@@ -786,7 +785,7 @@ const menuAdd = function (text, prev, row) {
   const idx = SELECTED_BOX.idx;
   const under = SELECTED_BOX.under;
 
-  const newBox = createNewBox(null, under);
+  const newBox = createBox(null, under);
 
   if (row) {
     const rows = under.rows;
@@ -845,19 +844,31 @@ const menuPaste = function () {
 };
 
 const menuEnclose = function () {
-  if (!SELECTED_BOX.under) {
-    // TODO: implement or remove the button
+  const box = SELECTED_BOX;
+
+  let newBox;
+
+  if (!box) {
+    createBox({x: (window.innerWidth - box.w)/2,
+               y: (window.innerHeight - box.h)/2});
     return;
   }
 
-  const box = SELECTED_BOX;
-  const under = box.under
+  if (!box.under) {
 
-  // make a new box, put it where this box was
-  const newBox = createNewBox(null, box.under);
-  under.rows[box.rowIdx].cells[box.idx] = newBox;
-  newBox.rowIdx = box.rowIdx;
-  newBox.idx = box.idx;
+    // make a new box, put it where this root box was
+    newBox = createBox({x: SELECTED_BOX.x, y: SELECTED_BOX.y});
+    BOXES.pop(); // createBox has already put the newBox in BOXES, get it out
+    BOXES[box.idx] = newBox;
+    newBox.idx = box.idx;
+
+  } else {
+    // make a new box, put it where this box was
+    newBox = createBox(null, box.under);
+    box.under.rows[box.rowIdx].cells[box.idx] = newBox;
+    newBox.rowIdx = box.rowIdx;
+    newBox.idx = box.idx;
+  }
 
   // move this box into the new box
   const newRow = {cells: [box]};
@@ -867,22 +878,17 @@ const menuEnclose = function () {
   box.rowIdx = 0;
   box.idx = 0;
 
-  requestDraw();
-};
+  recalculateDeepest();
 
-const undo = function () {
-  // TODO: 
+  requestDraw();
 };
 
 const menuCallbacks = {
   add: menuAdd,
   edit: menuEdit,
-  copy: menuCopy,
-  cut: menuCut,
-  paste: menuPaste,
   enclose: menuEnclose,
+  deleteNode: menuCut,
   save,
-  undo,
 
   menuDismissed
 };
@@ -946,13 +952,23 @@ GET_TOUCHY(CNV.element, {
       PANNING = false;
     } else if (ZOOMING_BOX) {
       zoomToBox(ZOOMING_BOX, TOUCH_ORIGIN);
-      MENU.show();
       // TODO: probably a bad idea
       SELECTED_BOX = ZOOMING_BOX;
       ZOOMING_BOX = null;
+    } else if (!TARGET_BOX) {
+      if (BOXES.length === 0) {
+        // create initial box
+        // TODO: maybe we should always just init to one box
+        // but what if you delete it? maybe disallow that
+        createBox(adjustForPanAndZoom(p));
+        TARGET_BOX = null;
+      }
     } else {
-      MENU.show();
       SELECTED_BOX = TARGET_BOX;
+    }
+
+    if (SELECTED_BOX) {
+      MENU.show(SELECTED_BOX);
     }
 
     TARGET_BOX = null;
@@ -970,8 +986,6 @@ GET_TOUCHY(CNV.element, {
       PANNING = false;
     } else if (ZOOMING_BOX) {
       ZOOMING_BOX = null;
-    } else {
-      TARGET_BOX = null;
     }
 
   },
