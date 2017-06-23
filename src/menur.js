@@ -9,11 +9,11 @@ const MENUR = (function (cb) {
   const MENU_BUTTONS = [
     [
       {t: 'Save', cmd: cb.save, name: 'save'},
-      {t: 'New Empty', cmd: cb.newBox, name: 'newBox'},
-      {t: 'New Text', cmd: cb.type, name: 'type'},
-      {t: 'New Words', cmd: cb.typeWords, name: 'typeWords'},
+      {t: 'Node', cmd: cb.newBox, name: 'newBox'},
+      {t: 'Text', cmd: cb.type, name: 'type'},
+      {t: 'Words', cmd: cb.typeWords, name: 'typeWords'},
       {t: 'Return', cmd: cb.newRow, name: 'newRow'},
-      {t: 'Delete >', cmd: cb.del, name: 'del'},
+      {t: 'Delete', cmd: cb.del, name: 'del'},
     ],
   ];
   return {
@@ -23,7 +23,7 @@ const MENUR = (function (cb) {
       TABLE = document.createElement('table');
       TABLE.id = 'menu-table';
 
-      let menuArray = MENU_BUTTONS;
+      const menuArray = MENU_BUTTONS;
 
       for (let i = 0; i < 1; i++) {
         const tr = document.createElement('tr');
@@ -45,7 +45,9 @@ const MENUR = (function (cb) {
             }
 
             td.addEventListener('click', function (e) {
-              button.cmd();
+              if (!button.ignore) {
+                button.cmd();
+              }
             });
           }
 
@@ -56,5 +58,22 @@ const MENUR = (function (cb) {
 
       div.appendChild(TABLE);
     },
+    setButtonsActive: function (active) {
+      const menuArray = MENU_BUTTONS;
+
+      menuArray.forEach(row => row.forEach(function (button) {
+        if (button.cmd) {
+          const id = 'key-' + button.name;
+          const td = document.getElementById(id);
+          if (active.indexOf(button.name) !== -1) {
+            td.className = 'filled';
+            button.ignore = false;
+          } else {
+            td.className = 'filled inactive';
+            button.ignore = true;
+          }
+        }
+      }));
+    }
   };
 });

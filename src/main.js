@@ -609,28 +609,31 @@ const cursorBeforeOrAfterOrInside = function () {
 };
 
 const setCursorBeforeBox = function (box) {
-  // TODO: we can set the keys to greyed out or not through this
   CURSOR_BEFORE_BOX = box;
   CURSOR_AFTER_BOX = null;
   CURSOR_INSIDE_BOX = null;
+
+  updateKeyboard();
   
   requestDraw();
 };
 
 const setCursorAfterBox = function (box) {
-  // TODO: ditto
   CURSOR_AFTER_BOX = box;
   CURSOR_BEFORE_BOX = null;
   CURSOR_INSIDE_BOX = null;
+
+  updateKeyboard();
 
   requestDraw();
 };
 
 const setCursorInsideBox = function (box) {
-  // TODO: yup
   CURSOR_INSIDE_BOX = box;
   CURSOR_BEFORE_BOX = null;
   CURSOR_AFTER_BOX = null;
+
+  updateKeyboard();
 
   requestDraw();
 }
@@ -1180,6 +1183,18 @@ const menuCallbacks = {
 };
 
 const MENU = MENUR(menuCallbacks);
+
+const updateKeyboard = function () {
+  if (CURSOR_BEFORE_BOX) {
+    MENU.setButtonsActive(['save', 'newBox', 'type']);
+  } else if (CURSOR_AFTER_BOX) {
+    MENU.setButtonsActive(['typeWords', 'newRow', 'del']);
+  } else if (CURSOR_INSIDE_BOX) {
+    MENU.setButtonsActive(['save','del']);
+  } else {
+    MENU.setButtonsActive(['save']);
+  }
+};
 
 // main code starts here
 
