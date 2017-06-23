@@ -518,7 +518,7 @@ const draw = function () {
     attrs.stroke = SELECTION_LINE_COLOR;
     CNV.context.lineWidth = SELECTED_LINE_WIDTH;
     CNV.drawRect(attrs);
-  } else if (CURSOR_AFTER_BOX) {
+  } else if (CURSOR_AFTER_BOX && CURSOR_AFTER_BOX.under) {
     const box = CURSOR_AFTER_BOX;
     const cells = box.under.rows[box.rowIdx].cells;
     let nextBox = null;
@@ -1243,10 +1243,8 @@ GET_TOUCHY(CNV.element, {
       }
     } else {
       setCursorBeforeBox(TARGET_BOX);
-    }
-
-    if (CURSOR_BEFORE_BOX) {
-      const sp = convertToBoxXY(CURSOR_BEFORE_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
+      const sp =
+        convertToBoxXY(CURSOR_BEFORE_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
       if (sp.x > CURSOR_BEFORE_BOX.w/2) {
         setCursorAfterBox(CURSOR_BEFORE_BOX);
       }
