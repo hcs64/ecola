@@ -28,7 +28,9 @@ let LAST_ZOOM_COORDS;
 let PINCH_DISTANCE;
 let ZOOM_TARGET;
 
-let SELECTED_BOX;
+let CURSOR_BEFORE_BOX;
+let CURSOR_AFTER_BOX;
+let CURSOR_INSIDE_BOX;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -59,7 +61,9 @@ const resetGlobals = function () {
   PINCH_DISTANCE = null;
   ZOOM_TARGET = null;
 
-  SELECTED_BOX = null;
+  CURSOR_BEFORE_BOX = null;
+  CURSOR_AFTER_BOX = null;
+  CURSOR_INSIDE_BOX = null;
 };
 
 const HOLD_TIMEOUT1_MS = 500;
@@ -79,9 +83,8 @@ const SHRINK0 = 1/2;
 const MIN_SHRINK = SHRINK0/16;
 const TOO_SMALL_THRESH = 0.75;
 
-const SELECTION_LINE_WIDTH = 5;
 const SELECTION_LINE_COLOR = '#808080';
-const SELECTION_TEXT_COLOR = '#808080';
+const SELECTED_LINE_WIDTH = 2;
 
 const PROMPT_INPUT = document.getElementById('prompt-input');
 const PROMPT_FORM = document.getElementById('prompt-form');
@@ -138,22 +141,22 @@ const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
   return null;
 };
 
-const convertToBoxXY = function (box, x, y) {
+const convertToBoxXY = function (box, {x, y}) {
   if (box.under) {
     const row = box.under.rows[box.rowIdx];
     x -= box.x + row.x;
     y -= box.y + row.y;
-    return convertToBoxXY(box.under, x, y);
+    return convertToBoxXY(box.under, {x, y});
   }
   return {x: x - box.x, y: y - box.y};
 };
 
-const convertToAbsoluteXY = function (box, x, y) {
+const convertToAbsoluteXY = function (box, {x, y}) {
   if (box.under) {
     const row = box.under.rows[box.rowIdx];
     x += box.x + row.x;
     y += box.y + row.y;
-    return convertToAbsoluteXY(box.under, x, y);
+    return convertToAbsoluteXY(box.under, {x, y});
   }
   return {x: x + box.x, y: y + box.y}
 };
@@ -171,7 +174,7 @@ const createBox = function (p, under = null) {
   newBox.w = EMPTY_BOX_WIDTH;
   newBox.h = EMPTY_BOX_HEIGHT;
 
-  if (!under) {
+  if (p) {
     newBox.x = p.x - newBox.w/2
     newBox.y = p.y - newBox.h/2;
   }
@@ -255,7 +258,7 @@ const updateBoxRows = function (box, callUp = true) {
       box.h = EMPTY_BOX_HEIGHT * s;
     }
   } else {
-    box.w = w + 2 * BOX_BORDER + handle;
+    box.w = w + 2 * (BOX_BORDER + handle);
     box.h = h;
   }
 
@@ -281,10 +284,6 @@ const updateRowCells = function (row, box) {
 
   row.w = w - BOX_BORDER;
   row.h = h;
-};
-
-const zoomFactor = function (zoom) {
-  return Math.pow(2, zoom/100);
 };
 
 const recalculateDeepestInner = function (box, depth) {
@@ -450,11 +449,16 @@ const draw = function () {
       zoomTarget = ZOOM_TARGET;
     } else {
       zoomTarget = findIntersectingBox(LAST_ZOOM_COORDS);
+      if (!zoomTarget && BOXES.length > 0) {
+        const box = BOXES[0];
+        zoomTarget = box;
+        LAST_ZOOM_COORDS = {x: CNV.element.width/2, y: CNV.element.height/2};
+      }
     }
 
     if (zoomTarget &&
         typeof zoomTarget.w === 'number' && typeof zoomTarget.h === 'number') {
-      zoomTargetDim = convertToAbsoluteXY(zoomTarget, 0, 0);
+      zoomTargetDim = convertToAbsoluteXY(zoomTarget, {x: 0, y: 0});
       zoomTargetDim.w = zoomTarget.w;
       zoomTargetDim.h = zoomTarget.h;
     }
@@ -470,7 +474,7 @@ const draw = function () {
   if (zoomTargetDim) {
     // adjust pan to center on the zoom focus
     const {x: oldx, y: oldy, w: oldw, h: oldh} = zoomTargetDim;
-    const {x: newx, y: newy} = convertToAbsoluteXY(zoomTarget, 0, 0);
+    const {x: newx, y: newy} = convertToAbsoluteXY(zoomTarget, {x: 0, y: 0});
     const {w: neww, h: newh} = zoomTarget;
     const {x: zx, y: zy}  = LAST_ZOOM_COORDS;
     PAN_TRANSLATE.x += zx - ((zx - oldx) / oldw * neww + newx);
@@ -485,6 +489,60 @@ const draw = function () {
                 y: PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y});
 
   BOXES.forEach(drawBox);
+
+  if (CURSOR_BEFORE_BOX || CURSOR_AFTER_BOX) {
+    let box, cursorAttrs;
+    if (CURSOR_BEFORE_BOX) {
+      box = CURSOR_BEFORE_BOX;
+      cursorAttrs = convertToAbsoluteXY(box, {x: -BOX_BORDER, y: 0});
+    } else {
+      box = CURSOR_AFTER_BOX;
+      cursorAttrs = convertToAbsoluteXY(box, {x: box.w, y: 0});
+    }
+    cursorAttrs.w = BOX_BORDER;
+    cursorAttrs.h = box.h;
+    cursorAttrs.stroke = SELECTION_LINE_COLOR;
+    CNV.context.lineWidth = BOX_BORDER;
+
+    // TODO: should just be a drawline
+    CNV.drawRect(cursorAttrs);
+  }
+
+  // draw selection box (shows where deletion or insertion will take place,
+  // when this coincides with an existing box)
+  if (CURSOR_BEFORE_BOX) {
+    const box = CURSOR_BEFORE_BOX;
+    const attrs = convertToAbsoluteXY(box, {x: 0, y: 0});
+    attrs.w = box.w;
+    attrs.h = box.h;
+    attrs.stroke = SELECTION_LINE_COLOR;
+    CNV.context.lineWidth = SELECTED_LINE_WIDTH;
+    CNV.drawRect(attrs);
+  } else if (CURSOR_AFTER_BOX) {
+    const box = CURSOR_AFTER_BOX;
+    const cells = box.under.rows[box.rowIdx].cells;
+    let nextBox = null;
+    if (box.under && box.idx + 1 < cells.length) {
+      const nextBox = cells[box.idx + 1];
+      const attrs =
+        convertToAbsoluteXY(box, {x: nextBox.x - box.x, y: nextBox.y - box.y});
+      attrs.w = nextBox.w;
+      attrs.h = nextBox.h;
+      attrs.stroke = SELECTION_LINE_COLOR;
+
+      CNV.context.lineWidth = SELECTED_LINE_WIDTH;
+      CNV.drawRect(attrs);
+    }
+  } else if (CURSOR_INSIDE_BOX) {
+    const box = CURSOR_INSIDE_BOX;
+    const cursorAttrs = convertToAbsoluteXY(box, {x: box.w/4, y: box.h/4});
+    cursorAttrs.w = box.w/2;
+    cursorAttrs.h = box.h/2;
+    cursorAttrs.stroke = SELECTION_LINE_COLOR;
+    CNV.context.lineWidth = BOX_BORDER; 
+    CNV.drawRect(cursorAttrs);
+  }
+
 
   CNV.exitRel();
 };
@@ -515,11 +573,6 @@ const drawBox = function (box, idx) {
   if (typeof box.text === 'string' && box.text.length > 0) {
     const scale = getTextShrinkage(box);
     if (scale > MIN_SHRINK) {
-      let textColor = TEXT_COLOR;
-
-      if (SELECTED_BOX) {
-        textColor = SELECTION_TEXT_COLOR;
-      }
       const adj = (1-scale)/2/scale;
       // TODO: CNVR should support this without two levels, probably just
       // do saving manually
@@ -527,22 +580,49 @@ const drawBox = function (box, idx) {
       CNV.enterRel({x: box.w*adj, y: box.h*adj});
       CNV.drawText({x: Math.round(box.w/2),
                   y: Math.round(box.h/2),
-                  msg: box.text, fill: textColor});
+                  msg: box.text, fill: TEXT_COLOR});
       CNV.exitRel();
       CNV.exitRel();
     }
   }
 
-  if (box === SELECTED_BOX) {
-    rectAttrs.fill = null;
-    CNV.context.lineWidth = SELECTION_LINE_WIDTH;
-    rectAttrs.stroke = SELECTION_LINE_COLOR;
-
-    CNV.drawRect(rectAttrs);
-  }
-
   CNV.exitRel();
 };
+
+const cursorBeforeOrAfter = function () {
+  return CURSOR_BEFORE_BOX ? CURSOR_BEFORE_BOX : CURSOR_AFTER_BOX;
+};
+
+const cursorBeforeOrAfterOrInside = function () {
+  return CURSOR_INSIDE_BOX ? CURSOR_INSIDE_BOX : cursorBeforeOrAfter();
+};
+
+const setCursorBeforeBox = function (box) {
+  // TODO: we can set the keys to greyed out or not through this
+  CURSOR_BEFORE_BOX = box;
+  CURSOR_AFTER_BOX = null;
+  CURSOR_INSIDE_BOX = null;
+  
+  requestDraw();
+};
+
+const setCursorAfterBox = function (box) {
+  // TODO: ditto
+  CURSOR_AFTER_BOX = box;
+  CURSOR_BEFORE_BOX = null;
+  CURSOR_INSIDE_BOX = null;
+
+  requestDraw();
+};
+
+const setCursorInsideBox = function (box) {
+  // TODO: yup
+  CURSOR_INSIDE_BOX = box;
+  CURSOR_BEFORE_BOX = null;
+  CURSOR_AFTER_BOX = null;
+
+  requestDraw();
+}
 
 const boxFromString = function (str, level, i) {
   if (i >= str.length) {
@@ -626,6 +706,7 @@ const boxFromString = function (str, level, i) {
 
   throw 'unexpected end of string';
 };
+
 const loadFromHash = function () {
   let hash = window.location.hash;
   if (typeof hash === 'string' && hash.length > 1 && hash[0] === '#') {
@@ -656,8 +737,8 @@ const loadFromHash = function () {
         zoomOut();
         setZoom(SEMANTIC_ZOOM + ZOOM_LEVEL_PIXELS);
         updateAllBoxes();
-        box.x = (window.innerWidth - box.w)/2;
-        box.y = (window.innerHeight - box.h)/2;
+        box.x = (CNV.element.width - box.w)/2;
+        box.y = (CNV.element.height - box.h)/2;
 
         BOX_CHANGED = true;
         requestDraw();
@@ -717,7 +798,7 @@ const save = function () {
   window.history.replaceState(undefined, undefined, SAVE_HASH);
 };
 
-const promptText = function (init, cb) {
+const promptText = function (init, cb, cbc) {
   if (typeof init !== 'string') {
     init = '';
   }
@@ -742,7 +823,12 @@ const promptText = function (init, cb) {
   PROMPT_INPUT.value = init;
   PROMPT_INPUT.focus();
 
-  CANCEL_PROMPT = () => cancelPromptText(submitHandler);
+  CANCEL_PROMPT = function () {
+    cancelPromptText(submitHandler);
+    if (!!cbc) {
+      cbc();
+    }
+  };
 };
 
 const cancelPromptText = function (submitHandler) {
@@ -766,17 +852,41 @@ const tagBox = function (box, text) {
   requestDraw();
 };
 
-const menuDismissed = function (v) {
-  if (typeof v === 'object' && v.dontDeselect) {
-    //
-    console.log('got dontDeselect');
-  } else {
-    SELECTED_BOX = null;
+const insertTaggedBox = function (text) {
+  if (CURSOR_INSIDE_BOX) {
+    const box = CURSOR_INSIDE_BOX;
+    if (box.rows.length !== 0) {
+      throw 'should only be inside empty box';
+    }
+    const newBox = createBox(null, box);
+    tagBox(newBox, text);
+
+    const newRow = {cells: [newBox]}
+    box.rows.push(newRow);
+    newBox.rowIdx = 0;
+    newBox.idx = 0;
+
+    setCursorAfterBox(newBox);
+    return;
   }
-  requestDraw();
+
+  const box = cursorBeforeOrAfter();
+  const newBox = createBox(null, box.under);
+  const cells = box.under.rows[box.rowIdx].cells;
+  tagBox(newBox, text);
+      
+  if (CURSOR_BEFORE_BOX) {
+    cells.splice(box.idx, 0, newBox);
+  } else {
+    cells.splice(box.idx + 1, 0, newBox);
+  }
+  newBox.rowIdx = box.rowIdx;
+  reindexBoxes(cells);
+
+  setCursorAfterBox(newBox);
 };
 
-const menuAdd = function (text, prev, row) {
+/*const menuAdd = function (text, prev, row) {
   if (!SELECTED_BOX.under) {
     return;
   }
@@ -827,23 +937,15 @@ const menuEdit = function () {
   });
 
   return {dontDeselect: true};
-};
+};*/
 
-const menuCopy = function () {
-  // TODO: save somewhere
-};
-
-const menuCut = function () {
+/*const menuCut = function () {
   // TODO: actually save somewhere
   removeBox(SELECTED_BOX);
   requestDraw();
-};
+};*/
 
-const menuPaste = function () {
-  // TODO: retrieve from save, update everything
-};
-
-const menuEnclose = function () {
+/*const menuEnclose = function () {
   const box = SELECTED_BOX;
 
   let newBox;
@@ -881,16 +983,189 @@ const menuEnclose = function () {
   recalculateDeepest();
 
   requestDraw();
+};*/
+
+const keyNewBox = function () {
+  if (CURSOR_INSIDE_BOX) {
+    const box = CURSOR_INSIDE_BOX;
+    if (box.rows.length !== 0) {
+      throw 'should only be inside empty box';
+    }
+    const newBox = createBox(null, box);
+
+    const newRow = {cells: [newBox]};
+    box.rows.push(newRow);
+    newBox.rowIdx = 0;
+    newBox.idx = 0;
+
+    setCursorAfterBox(newBox);
+    return;
+  }
+
+  const box = cursorBeforeOrAfter();
+  if (!box || !box.under) {
+    // TODO: grey
+    return;
+  }
+
+  const newBox = createBox(null, box.under);
+  const cells = box.under.rows[box.rowIdx].cells;
+
+  if (CURSOR_BEFORE_BOX) {
+    cells.splice(box.idx, 0, newBox);
+  } else {
+    cells.splice(box.idx + 1, 0, newBox);
+  }
+  newBox.rowIdx = box.rowIdx
+  reindexBoxes(cells);
+
+  setCursorInsideBox(newBox);
+};
+
+const keyHome = function () {
+};
+
+const keyEnd = function () {
+};
+
+const keyType = function () {
+  let box = cursorBeforeOrAfterOrInside();
+  if (!box || !box.under) {
+      // TODO: grey out key for root?
+    return;
+  }
+  promptText('', function (text) {
+    insertTaggedBox(text);
+  });
+};
+
+const keyTypeWords = function () {
+  const box = cursorBeforeOrAfterOrInside();
+  if (!box || !box.under) {
+    // TODO
+    return;
+  }
+  promptText('', function (text) {
+    text.split(' ').forEach(insertTaggedBox);
+  });
+};
+
+const keyNewRow = function () {
+  const box = cursorBeforeOrAfter();
+  if (!box || !box.under) {
+    // TODO
+    return;
+  }
+
+  const cells = box.under.rows[box.rowIdx].cells;
+  if (CURSOR_AFTER_BOX &&
+    cells.length - 1 === box.idx) {
+    // TODO
+    return;
+  }
+  if (CURSOR_BEFORE_BOX && box.idx === 0) {
+    return;
+  }
+
+  let split = box.idx;
+  if (CURSOR_AFTER_BOX) {
+    split ++;
+  }
+
+  const first = cells.slice(0, split);
+  const second = cells.slice(split);
+
+  box.under.rows[box.rowIdx] = {cells: first};
+  box.under.rows.splice(box.rowIdx + 1, 0, {cells: second});
+
+  reindexRows(box.under.rows);
+
+  BOX_CHANGED = true;
+
+  requestDraw();
+
+};
+
+const keyLeft = function () {
+};
+
+const keyRight = function () {
+};
+
+const keyDel = function () {
+  const box = cursorBeforeOrAfter();
+  if (!box || !box.under) {
+    // TODO
+    return;
+  }
+
+  const cells = box.under.rows[box.rowIdx].cells;
+  if (CURSOR_AFTER_BOX &&
+    cells.length - 1 === box.idx) {
+
+    // delete a row break if possible
+    if (box.rowIdx === box.under.rows.length - 1) {
+      // nothing after the last row
+      // TODO: grey
+      return;
+    }
+
+    const cells2 = box.under.rows[box.rowIdx+1].cells;
+    box.under.rows.splice(box.rowIdx, 2, {cells: cells.concat(cells2)});
+
+    reindexRows(box.under.rows);
+    setCursorBeforeBox(null);
+    BOX_CHANGED = true;
+    requestDraw();
+
+    return;
+  }
+
+  let target = box;
+  if (CURSOR_AFTER_BOX) {
+    target = cells[box.idx + 1];
+  }
+
+  if (cells.length === 1) {
+    // deleting the only cell in this row, thus delete the row
+    box.under.rows.splice(box.rowIdx, 1);
+
+    // TODO save somehow
+
+    reindexRows(box.under.rows);
+    setCursorBeforeBox(null);
+    BOX_CHANGED = true;
+    requestDraw();
+
+    return;
+  }
+
+  // normal deletion
+  cells.splice(target.idx, 1);
+
+  reindexBoxes(cells);
+  setCursorBeforeBox(null);
+  BOX_CHANGED = true;
+  requestDraw();
+  return;
+};
+
+const keyPaste = function () {
 };
 
 const menuCallbacks = {
-  add: menuAdd,
-  edit: menuEdit,
-  enclose: menuEnclose,
-  deleteNode: menuCut,
+  newBox: keyNewBox,
+  home: keyHome,
+  end: keyEnd,
+  type: keyType,
+  typeWords: keyTypeWords,
+  newRow: keyNewRow,
+  left: keyLeft,
+  right: keyRight,
+  del: keyDel,
+  paste: keyPaste,
   save,
 
-  menuDismissed
 };
 
 const MENU = MENUR(menuCallbacks);
@@ -899,6 +1174,8 @@ const MENU = MENUR(menuCallbacks);
 
 resetGlobals();
 loadFromHash();
+MENU.show();
+setCursorBeforeBox(null);
 
 GET_TOUCHY(CNV.element, {
   touchStart: function (p) {
@@ -952,8 +1229,7 @@ GET_TOUCHY(CNV.element, {
       PANNING = false;
     } else if (ZOOMING_BOX) {
       zoomToBox(ZOOMING_BOX, TOUCH_ORIGIN);
-      // TODO: probably a bad idea
-      SELECTED_BOX = ZOOMING_BOX;
+      setCursorBeforeBox(ZOOMING_BOX);
       ZOOMING_BOX = null;
     } else if (!TARGET_BOX) {
       if (BOXES.length === 0) {
@@ -962,13 +1238,18 @@ GET_TOUCHY(CNV.element, {
         // but what if you delete it? maybe disallow that
         createBox(adjustForPanAndZoom(p));
         TARGET_BOX = null;
+      } else {
+        setCursorBeforeBox(null);
       }
     } else {
-      SELECTED_BOX = TARGET_BOX;
+      setCursorBeforeBox(TARGET_BOX);
     }
 
-    if (SELECTED_BOX) {
-      MENU.show(SELECTED_BOX);
+    if (CURSOR_BEFORE_BOX) {
+      const sp = convertToBoxXY(CURSOR_BEFORE_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
+      if (sp.x > CURSOR_BEFORE_BOX.w/2) {
+        setCursorAfterBox(CURSOR_BEFORE_BOX);
+      }
     }
 
     TARGET_BOX = null;

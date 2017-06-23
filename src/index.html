@@ -11,10 +11,12 @@ html, body {
   overflow: hidden;
 }
 
-canvas {
+canvas#cnv {
   position: fixed;
   top: 0;
   left: 0;
+  height: 85%;
+  width: 100%;
 }
 
 div.fullscreen {
@@ -49,7 +51,17 @@ form#prompt-form input[type=text] {
   height: 20px;
 }
 
-table#menu-table {
+div#keyboard {
+  position: fixed;
+  top: 85%;
+  left: 0;
+  height: 15%;
+  width: 100%;
+  outline: solid 2px;
+  background: #e0e0e0;
+}
+
+#keyboard table {
   position: relative;
   width: 100%;
   max-width: 500px;
@@ -58,19 +70,18 @@ table#menu-table {
   margin: auto;
 }
 
-table#menu-table td {
-  height: 25%;
-  width: 25%;
+#keyboard td {
+  height: 100%;
+  width: 16.6%;
   padding 10px;
   vertical-align: middle;
   text-align: center;
 }
 
-td.mb-filled {
+#keyboard td.filled {
   outline: 2px solid;
   font-size: 20px;
 }
-
 </style>
 </head>
 <body>
@@ -82,9 +93,10 @@ Enter text<br>
 </form>
 </div>
 
-<div id="menu" class="fullscreen">
 <div class="bg"></div>
 </div>
+<canvas id ="cnv"></canvas>
+<div id="keyboard"></div>
 <script src="cnvr.js"></script>
 <script src="touchy.js"></script>
 <script src="anim.js"></script>

@@ -7,16 +7,15 @@ let cnv = null;
 let ctx = null;
 
 const makeCanvas = function () {
-  cnv = document.createElement('canvas');
-  document.body.appendChild(cnv);
+  cnv = document.getElementById('cnv');
   ctx = cnv.getContext('2d');
 
  setupCanvas();
 };
 
 const setupCanvas = function () {
-  cnv.width = window.innerWidth;
-  cnv.height = window.innerHeight;
+  cnv.width = cnv.offsetWidth;
+  cnv.height = cnv.offsetHeight;
 };
 
 const clear = function () {
