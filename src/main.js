@@ -1247,17 +1247,20 @@ GET_TOUCHY(CNV.element, {
         // create initial box
         // TODO: maybe we should always just init to one box
         // but what if you delete it? maybe disallow that
-        createBox(adjustForPanAndZoom(p));
+        const newBox = createBox(adjustForPanAndZoom(p));
+        setCursorInsideBox(newBox);
         TARGET_BOX = null;
       } else {
         setCursorBeforeBox(null);
       }
     } else {
-      setCursorBeforeBox(TARGET_BOX);
-      const sp =
-        convertToBoxXY(CURSOR_BEFORE_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
-      if (sp.x > CURSOR_BEFORE_BOX.w/2) {
-        setCursorAfterBox(CURSOR_BEFORE_BOX);
+      if (TARGET_BOX.under) {
+        setCursorBeforeBox(TARGET_BOX);
+        const sp =
+          convertToBoxXY(CURSOR_BEFORE_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
+        if (sp.x > CURSOR_BEFORE_BOX.w/2) {
+          setCursorAfterBox(CURSOR_BEFORE_BOX);
+        }
       }
     }
 
