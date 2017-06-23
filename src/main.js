@@ -501,6 +501,17 @@ const draw = function () {
     }
     cursorAttrs.w = BOX_BORDER;
     cursorAttrs.h = box.h;
+    if (box.under) {
+      const cells = box.under.rows[box.rowIdx].cells;
+      if (CURSOR_BEFORE_BOX && box.idx > 0) {
+        const prevBox = cells[box.idx-1];
+        cursorAttrs.h = Math.max(prevBox.h, cursorAttrs.h);
+      } else if (CURSOR_AFTER_BOX && box.idx + 1 < cells.length) {
+        const nextBox = cells[box.idx+1];
+        cursorAttrs.h = Math.max(nextBox.h, cursorAttrs.h);
+      }
+    }
+
     cursorAttrs.stroke = SELECTION_LINE_COLOR;
     CNV.context.lineWidth = BOX_BORDER;
 
