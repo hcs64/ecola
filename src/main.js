@@ -127,11 +127,19 @@ const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
     if (x >= b.x && x < bxm && y >= b.y && y < bym) {
       for (let ri = b.rows.length - 1; ri >= 0; ri --) {
         const r = b.rows[ri];
-        const child =
-          findIntersectingBox({x: x - b.x - r.x, y: y - b.y - r.y,
-                               boxes: r.cells});
-        if (child) {
-          return child;
+        const ibx = x - b.x;
+        const iby = y - b.y;
+        const rxm = r.x + r.w;
+        const rym = r.y + r.h;
+        if (ibx >= r.x && ibx < rxm && iby >= r.y && iby < rym) {
+          const child =
+            findIntersectingBox({x: ibx - r.x, y: iby - r.y,
+                                 boxes: r.cells});
+          if (child) {
+            return child;
+          } else {
+            console.log('missed');
+          }
         }
       }
 
@@ -252,7 +260,7 @@ const updateBoxRows = function (box, callUp = true) {
   if (box.rows.length === 0) {
     const s = getTextShrinkage(box);
     if (typeof box.textWidth === 'number') {
-      box.w = BOX_BORDER * 2 + (box.textWidth * s);
+      box.w = BOX_BORDER * 2 + (FONT_SIZE + box.textWidth) * s;
       box.h = BOX_BORDER * 2 + FONT_SIZE * 1.5 * s;
     } else {
       box.w = EMPTY_BOX_WIDTH * s;
@@ -279,11 +287,11 @@ const updateRowCells = function (row, box) {
     cell.x = w;
     cell.y = 0;
 
-    w += cell.w + BOX_BORDER;
+    w += cell.w;
     h = Math.max(h, cell.h);
   });
 
-  row.w = w - BOX_BORDER;
+  row.w = w;
   row.h = h;
 };
 
@@ -495,7 +503,7 @@ const draw = function () {
     let box, cursorAttrs;
     if (CURSOR_BEFORE_BOX) {
       box = CURSOR_BEFORE_BOX;
-      cursorAttrs = convertToAbsoluteXY(box, {x: -BOX_BORDER, y: 0});
+      cursorAttrs = convertToAbsoluteXY(box, {x: 0, y: 0});
     } else {
       box = CURSOR_AFTER_BOX;
       cursorAttrs = convertToAbsoluteXY(box, {x: box.w, y: 0});
@@ -521,8 +529,8 @@ const draw = function () {
   // when this coincides with an existing box)
   if (CURSOR_BEFORE_BOX) {
     const box = CURSOR_BEFORE_BOX;
-    const attrs = convertToAbsoluteXY(box, {x: 0, y: 0});
-    attrs.w = box.w;
+    const attrs = convertToAbsoluteXY(box, {x: BOX_BORDER, y: 0});
+    attrs.w = box.w - BOX_BORDER;
     attrs.h = box.h;
     attrs.stroke = SELECTION_LINE_COLOR;
     CNV.context.lineWidth = SELECTED_LINE_WIDTH;
@@ -531,7 +539,7 @@ const draw = function () {
     // TODO: should be a line
     const box = CURSOR_INSIDE_BOX;
     const cursorAttrs = convertToAbsoluteXY(box,
-      {x: (box.w - BOX_BORDER) / 2, y: BOX_BORDER});
+      {x: box.w / 2, y: BOX_BORDER});
     cursorAttrs.w = BOX_BORDER;
     cursorAttrs.h = box.h - BOX_BORDER * 2;
     cursorAttrs.stroke = SELECTION_LINE_COLOR;
@@ -554,7 +562,7 @@ const drawBox = function (box, idx) {
 
   const levelHSL = `hsl(${levelHue},80%,${levelLum}%)`;
 
-  const rectAttrs = {x: 0, y: 0, w: box.w, h: box.h, fill: levelHSL};
+  const rectAttrs = {x: BOX_BORDER, y: 0, w: box.w-BOX_BORDER, h: box.h, fill: levelHSL};
 
   CNV.drawRect(rectAttrs);
 
@@ -569,13 +577,13 @@ const drawBox = function (box, idx) {
   if (isTaggedBox(box)) {
     const scale = getTextShrinkage(box);
     if (scale > MIN_SHRINK) {
+      // TODO: document this, I've already forgotten how it works
       const adj = (1-scale)/2/scale;
       // TODO: CNVR should support this without two levels, probably just
       // do saving manually
       CNV.enterRel({zoom: scale});
-      CNV.enterRel({x: box.w*adj, y: box.h*adj});
-      CNV.drawText({x: Math.round(box.w/2),
-                  y: Math.round(box.h/2),
+      CNV.enterRel({x: (box.w+BOX_BORDER)*adj, y: box.h*adj});
+      CNV.drawText({x: (box.w+BOX_BORDER)/2, y: box.h/2,
                   msg: box.text, fill: TEXT_COLOR});
       CNV.exitRel();
       CNV.exitRel();
@@ -1264,8 +1272,10 @@ GET_TOUCHY(CNV.element, {
 
       PANNING = false;
     } else if (ZOOMING_BOX) {
-      zoomToBox(ZOOMING_BOX, TOUCH_ORIGIN);
-      setCursorBeforeBox(ZOOMING_BOX);
+      if (ZOOMING_BOX.under) {
+        zoomToBox(ZOOMING_BOX, TOUCH_ORIGIN);
+        setCursorBeforeBox(ZOOMING_BOX);
+      }
       ZOOMING_BOX = null;
     } else if (!TARGET_BOX) {
       if (BOXES.length === 0) {
