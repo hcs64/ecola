@@ -15,7 +15,6 @@ let SAVE_HASH;
 let CANCEL_PROMPT;
 
 let SEMANTIC_ZOOM;
-let DEEPEST;
 let SHRINK_CUTOFF;
 let HANDLE_SHRINK_ROLLOFF;
 let SHRINK_ROLLOFF0;
@@ -31,6 +30,8 @@ let ZOOM_TARGET;
 let CURSOR_BEFORE_BOX;
 let CURSOR_AFTER_BOX;
 let CURSOR_INSIDE_BOX;
+
+let CLIPBOARD;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -48,7 +49,6 @@ const resetGlobals = function () {
   CANCEL_PROMPT = null;
 
   SEMANTIC_ZOOM = 0;
-  DEEPEST = 0;
   SHRINK_CUTOFF = 0;
   HANDLE_SHRINK_ROLLOFF = 0;
   SHRINK_ROLLOFF0 = 0;
@@ -64,6 +64,8 @@ const resetGlobals = function () {
   CURSOR_BEFORE_BOX = null;
   CURSOR_AFTER_BOX = null;
   CURSOR_INSIDE_BOX = null;
+
+  CLIPBOARD = [];
 };
 
 const HOLD_TIMEOUT1_MS = 500;
@@ -91,6 +93,8 @@ const PROMPT_FORM = document.getElementById('prompt-form');
 const PROMPT_MSG = document.getElementById('prompt-msg');
 const PROMPT = document.getElementById('prompt');
 
+const CLIPBOARD_MAX_LENGTH = 10;
+
 const OPEN_SYM = '(';
 const CLOSE_SYM = ')';
 const ROW_SYM = ',';
@@ -104,6 +108,7 @@ const ESC_SYM = '~';
   x, y: relative to row if under exists, else absolute
   w, h: now only temporary, generated through updateAllBoxes
   level: >= 0
+  deepest: the deepest level in this subtree
   rows[x]: {
     x, y: relative to under
     w, h
@@ -297,20 +302,21 @@ const updateRowCells = function (row, box) {
 
 const recalculateDeepestInner = function (box, depth) {
   box.level = depth;
-  DEEPEST = Math.max(DEEPEST, depth);
+  let deepest = depth;
   box.rows.forEach(function (row) {
     row.cells.forEach(function (cell) {
-      recalculateDeepestInner(cell, depth + 1);
+      deepest = Math.max(deepest, recalculateDeepestInner(cell, depth + 1));
     });
   });
+  box.deepest = deepest;
+  return deepest;
 };
 
 const recalculateDeepest = function (box) {
-  DEEPEST = 0;
   if (BOXES.length > 0) {
     recalculateDeepestInner(BOXES[0], 0);
+    updateZoom(BOXES[0]);
   }
-  updateZoom();
 };
 
 const updateAllBoxesInner = function (box) {
@@ -323,7 +329,9 @@ const updateAllBoxesInner = function (box) {
   updateBoxRows(box, false);
 };
 const updateAllBoxes = function () {
-  recalculateDeepest();
+  if (BOXES.length > 0) {
+    recalculateDeepest(BOXES[0]);
+  }
   BOXES.forEach(updateAllBoxesInner);
 };
 
@@ -335,18 +343,20 @@ const setZoom = function (newZoom, p) {
     LAST_ZOOM_COORDS = null;
   }
   ZOOM_CHANGED = true;
-  updateZoom();
+  if (BOXES.length > 0) {
+    updateZoom(BOXES[0]);
+  }
 }
 
-const updateZoom = function() {
-  if (SEMANTIC_ZOOM < -ZOOM_LEVEL_PIXELS * DEEPEST) {
-    SEMANTIC_ZOOM = -ZOOM_LEVEL_PIXELS * DEEPEST;
+const updateZoom = function(root) {
+  if (SEMANTIC_ZOOM < -ZOOM_LEVEL_PIXELS * root.deepest) {
+    SEMANTIC_ZOOM = -ZOOM_LEVEL_PIXELS * root.deepest;
   }
 
   if (SEMANTIC_ZOOM < 0) {
     const nz = SEMANTIC_ZOOM / -ZOOM_LEVEL_PIXELS;
     const rnz = Math.floor(nz);
-    SHRINK_CUTOFF = DEEPEST - rnz;
+    SHRINK_CUTOFF = root.deepest - rnz;
     const s = 1 - (nz - rnz);
     HANDLE_SHRINK_ROLLOFF = s;
     SHRINK_ROLLOFF0 = Math.max(s, SHRINK0);
@@ -354,7 +364,7 @@ const updateZoom = function() {
     SHRINK_ROLLOFF2 = SHRINK0 * lerp01(.0625, .25, s);
   } else {
     SEMANTIC_ZOOM = 0;
-    SHRINK_CUTOFF = DEEPEST;
+    SHRINK_CUTOFF = root.deepest;
     HANDLE_SHRINK_ROLLOFF = 1;
     SHRINK_ROLLOFF0 = 1;
     SHRINK_ROLLOFF1 = 1;
@@ -400,20 +410,20 @@ const getTextShrinkage = function (box, noRowBonus) {
 
 };
 
-const zoomToBox = function (box, touch) {
+const zoomToBox = function (root, box, touch) {
   if (getHandleShrinkage(box) > TOO_SMALL_THRESH) {
     return;
   }
-  let minLevel = DEEPEST - box.level;
+  let minLevel = root.deepest - box.level;
   if (box.rows.length !== 0) {
     minLevel --;
   }
   setZoom(-ZOOM_LEVEL_PIXELS * minLevel, touch);
 };
 
-const zoomOut = function () {
-  recalculateDeepest();
-  setZoom(-ZOOM_LEVEL_PIXELS * DEEPEST - 1, null);
+const zoomOut = function (root) {
+  recalculateDeepest(root);
+  setZoom(-ZOOM_LEVEL_PIXELS * root.deepest - 1, null);
 };
 
 const adjustForPanAndZoom = function ({x,y}) {
@@ -753,7 +763,7 @@ const loadFromHash = function () {
         box.x = 0;
         box.y = 0;
         reindexBoxes();
-        zoomOut();
+        zoomOut(box);
         setZoom(SEMANTIC_ZOOM + ZOOM_LEVEL_PIXELS);
         updateAllBoxes();
         box.x = (CNV.element.width - box.w)/2;
@@ -815,6 +825,16 @@ const updateSaveHash = function () {
 const save = function () {
   updateSaveHash();
   window.history.replaceState(undefined, undefined, SAVE_HASH);
+};
+
+const storeCut = function (box) {
+  const str = stringFromBox(box);
+
+  CLIPBOARD.push(str);
+  while (CLIPBOARD.length > CLIPBOARD_MAX_LENGTH) {
+    CLIPBOARD.shift();
+  }
+  console.log(CLIPBOARD);
 };
 
 const promptText = function (init, msg, cb, cbc) {
@@ -909,105 +929,6 @@ const insertTaggedBox = function (text) {
 
   setCursorAfterBox(newBox);
 };
-
-/*const menuAdd = function (text, prev, row) {
-  if (!SELECTED_BOX.under) {
-    return;
-  }
-
-  const rowIdx = SELECTED_BOX.rowIdx;
-  const idx = SELECTED_BOX.idx;
-  const under = SELECTED_BOX.under;
-
-  const newBox = createBox(null, under);
-
-  if (row) {
-    const rows = under.rows;
-    const newRow = {cells:[newBox]};
-    if (prev) {
-      rows.splice(rowIdx, 0, newRow);
-    } else {
-      rows.splice(rowIdx + 1, 0, newRow);
-    }
-    reindexRows(rows);
-  } else {
-    const cells = under.rows[rowIdx].cells;
-    if (prev) {
-      cells.splice(idx, 0, newBox);
-    } else {
-      cells.splice(idx + 1, 0, newBox);
-    }
-    reindexBoxes(cells);
-    newBox.rowIdx = rowIdx;
-  }
-
-  if (text) {
-    const myBox = newBox;
-    promptText('', function (text) {
-      tagBox(myBox, text);
-      SELECTED_BOX = null;
-    });
-
-    SELECTED_BOX = newBox;
-    return {dontDeselect: true};
-  }
-};
-
-const menuEdit = function () {
-  const myBox = SELECTED_BOX;
-  promptText(myBox.text, function (text) {
-    tagBox(myBox, text);
-    SELECTED_BOX = null;
-  });
-
-  return {dontDeselect: true};
-};*/
-
-/*const menuCut = function () {
-  // TODO: actually save somewhere
-  removeBox(SELECTED_BOX);
-  requestDraw();
-};*/
-
-/*const menuEnclose = function () {
-  const box = SELECTED_BOX;
-
-  let newBox;
-
-  if (!box) {
-    createBox({x: (window.innerWidth - box.w)/2,
-               y: (window.innerHeight - box.h)/2});
-    return;
-  }
-
-  if (!box.under) {
-
-    // make a new box, put it where this root box was
-    newBox = createBox({x: SELECTED_BOX.x, y: SELECTED_BOX.y});
-    BOXES.pop(); // createBox has already put the newBox in BOXES, get it out
-    BOXES[box.idx] = newBox;
-    newBox.idx = box.idx;
-
-  } else {
-    // make a new box, put it where this box was
-    newBox = createBox(null, box.under);
-    box.under.rows[box.rowIdx].cells[box.idx] = newBox;
-    newBox.rowIdx = box.rowIdx;
-    newBox.idx = box.idx;
-  }
-
-  // move this box into the new box
-  const newRow = {cells: [box]};
-  newBox.rows.push(newRow);
-  box.under = newBox;
-  box.level = newBox.level + 1;
-  box.rowIdx = 0;
-  box.idx = 0;
-
-  recalculateDeepest();
-
-  requestDraw();
-};*/
 
 const keyNewBox = function () {
   if (CURSOR_INSIDE_BOX) {
@@ -1113,6 +1034,20 @@ const keyNewRow = function () {
 
 };
 
+const handleDepthChangeForDelete = function (box) {
+  // assume here we can't delete BOXES[0]
+  if (box.deepest === BOXES[0].deepest) {
+    recalculateDeepestInner(BOXES[0], 0);
+    if (box.deepest > BOXES[0].deepest) {
+      // deleted deepest
+
+      console.log('depth changed by ' + (box.deepest - BOXES[0].deepest));
+      setZoom(SEMANTIC_ZOOM +
+                ZOOM_LEVEL_PIXELS * (box.deepest - BOXES[0].deepest));
+    }
+  }
+}
+
 const keyDel = function () {
   const box = cursorBeforeOrAfter();
   if (!box || !box.under) {
@@ -1142,16 +1077,19 @@ const keyDel = function () {
     // deleting the only cell in this row, rows can't be empty so delete row
     box.under.rows.splice(box.rowIdx, 1);
 
-    // TODO save somehow
-
     reindexRows(box.under.rows);
 
     if (box.under.rows.length > box.rowIdx) {
-      setCursorBeforeBox(cells[0]);
+      setCursorBeforeBox(box.under.rows[box.rowIdx].cells[0]);
     } else {
       setCursorBeforeBox(null);
     }
+
+    storeCut(box);
+    handleDepthChangeForDelete(box);
+
     BOX_CHANGED = true;
+
     requestDraw();
 
     return;
@@ -1161,12 +1099,18 @@ const keyDel = function () {
   cells.splice(box.idx, 1);
 
   reindexBoxes(cells);
+
   if (box.idx < cells.length) {
     setCursorBeforeBox(cells[box.idx]);
   } else {
     setCursorAfterBox(cells[cells.length - 1]);
   }
+
+  storeCut(box);
+  handleDepthChangeForDelete(box);
+
   BOX_CHANGED = true;
+
   requestDraw();
   return;
 };
@@ -1284,7 +1228,7 @@ GET_TOUCHY(CNV.element, {
       PANNING = false;
     } else if (ZOOMING_BOX) {
       if (ZOOMING_BOX.under) {
-        zoomToBox(ZOOMING_BOX, TOUCH_ORIGIN);
+        zoomToBox(BOXES[0], ZOOMING_BOX, TOUCH_ORIGIN);
         setCursorBeforeBox(ZOOMING_BOX);
       }
       ZOOMING_BOX = null;
