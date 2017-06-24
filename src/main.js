@@ -88,6 +88,7 @@ const SELECTED_LINE_WIDTH = 2;
 
 const PROMPT_INPUT = document.getElementById('prompt-input');
 const PROMPT_FORM = document.getElementById('prompt-form');
+const PROMPT_MSG = document.getElementById('prompt-msg');
 const PROMPT = document.getElementById('prompt');
 
 const OPEN_SYM = '(';
@@ -808,7 +809,7 @@ const save = function () {
   window.history.replaceState(undefined, undefined, SAVE_HASH);
 };
 
-const promptText = function (init, cb, cbc) {
+const promptText = function (init, msg, cb, cbc) {
   if (typeof init !== 'string') {
     init = '';
   }
@@ -817,6 +818,7 @@ const promptText = function (init, cb, cbc) {
     CANCEL_PROMPT();
   }
 
+  PROMPT_MSG.textContent = msg;
   PROMPT.style.visibility = 'visible';
 
   const submitHandler = function (e) {
@@ -1036,7 +1038,7 @@ const keyType = function () {
   if (!box || (!CURSOR_INSIDE_BOX && !box.under)) {
     return;
   }
-  promptText('', function (text) {
+  promptText('', 'Enter text', function (text) {
     insertTaggedBox(text);
   });
 };
@@ -1046,7 +1048,7 @@ const keyTypeWords = function () {
   if (!box || (!CURSOR_INSIDE_BOX && !box.under)) {
     return;
   }
-  promptText('', function (text) {
+  promptText('', 'Enter text, space separated', function (text) {
     text.split(' ').forEach(insertTaggedBox);
   });
 };
