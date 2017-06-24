@@ -12,7 +12,6 @@ const MENUR = (function (cb) {
       {t: 'Paste', cmd: cb.paste, name: 'paste'},
       {t: 'Node', cmd: cb.newBox, name: 'newBox'},
       {t: 'Text', cmd: cb.type, name: 'type'},
-      {t: 'Words', cmd: cb.typeWords, name: 'typeWords'},
       {t: 'Row', cmd: cb.newRow, name: 'newRow'},
       {t: 'Cut', cmd: cb.del, name: 'del'},
     ],

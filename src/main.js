@@ -898,7 +898,7 @@ const cancelPromptText = function (submitHandler) {
 };
 
 const isTaggedBox = function (box) {
-  return typeof box.text === 'string' && box.text !== '';
+  return box && typeof box.text === 'string' && box.text !== '';
 }
 
 const tagBox = function (box, text) {
@@ -999,23 +999,6 @@ const keyType = function () {
   }
 
   promptText('', 'Enter text', function (text) {
-    insertTaggedBox(text);
-  });
-};
-
-const keyTypeWords = function () {
-  const box = cursorBeforeOrAfterOrInside();
-  if (!box) {
-    return;
-  }
-  if (CURSOR_INSIDE_BOX && isTaggedBox(box)) {
-    return;
-  }
-  if (!CURSOR_INSIDE_BOX && !box.under) {
-    return;
-  }
-
-  promptText('', 'Enter text, space separated', function (text) {
     text.split(' ').forEach(insertTaggedBox);
   });
 };
@@ -1212,7 +1195,6 @@ const keyPaste = function () {
 const menuCallbacks = {
   newBox: keyNewBox,
   type: keyType,
-  typeWords: keyTypeWords,
   newRow: keyNewRow,
   del: keyDel,
   paste: keyPaste,
@@ -1247,11 +1229,12 @@ const updateKeyboard = function () {
     active.push('paste');
   }
   if (nonRootBAIBox || CURSOR_INSIDE_BOX) {
+    if (isTaggedBox(CURSOR_INSIDE_BOX)) {
+      document.getElementById('key-type').textContent = 'Edit';
+    } else {
+      document.getElementById('key-type').textContent = 'Text';
+    }
     active.push('type');
-  }
-  if ((nonRootBAIBox || CURSOR_INSIDE_BOX) &&
-      !(CURSOR_INSIDE_BOX && isTaggedBox(baiBox))) {
-    active.push('typeWords');
   }
   if (nonRootBABox) {
     active.push('newRow');
