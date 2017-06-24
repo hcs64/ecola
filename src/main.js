@@ -1105,6 +1105,8 @@ const keyNewRow = function () {
 
   reindexRows(box.under.rows);
 
+  setCursorBeforeBox(box);
+
   BOX_CHANGED = true;
 
   requestDraw();
@@ -1129,7 +1131,7 @@ const keyDel = function () {
     box.under.rows.splice(box.rowIdx, 2, {cells: cells.concat(cells2)});
 
     reindexRows(box.under.rows);
-    setCursorBeforeBox(null);
+    setCursorAfterBox(CURSOR_AFTER_BOX);
     BOX_CHANGED = true;
     requestDraw();
 
@@ -1143,7 +1145,12 @@ const keyDel = function () {
     // TODO save somehow
 
     reindexRows(box.under.rows);
-    setCursorBeforeBox(null);
+
+    if (box.under.rows.length > box.rowIdx) {
+      setCursorBeforeBox(cells[0]);
+    } else {
+      setCursorBeforeBox(null);
+    }
     BOX_CHANGED = true;
     requestDraw();
 
@@ -1154,7 +1161,11 @@ const keyDel = function () {
   cells.splice(box.idx, 1);
 
   reindexBoxes(cells);
-  setCursorBeforeBox(null);
+  if (box.idx < cells.length) {
+    setCursorBeforeBox(cells[box.idx]);
+  } else {
+    setCursorAfterBox(cells[cells.length - 1]);
+  }
   BOX_CHANGED = true;
   requestDraw();
   return;
