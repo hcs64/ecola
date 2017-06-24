@@ -1,12 +1,15 @@
 # ecola
-Just an experiment in creating tree structures with a touch screen, in an early
-prototype stage.
+An experiment in creating tree structures with a touch screen. This project in an early prototype stage.
 
 ![once upon a time there was a little editor](/ecola-screen.png?raw=true)
 
-A video of the zooming behavior is [here](/zoom.gif?raw=true). Try it out at https://gashlin.net/tests/ecola/babel/
 
-Pre-populated examples can be found [here](https://gashlin.net/tests/ecola/babel/#%28'once'upon'a'time%28'there'was%29%2C%28'a%28'little%29'editor%29%28'for%2C'tree%2C'structured%2C'data%29%29) and [here](https://gashlin.net/tests/ecola/babel/#%28%27defun%27fib%28%27n%29%2C%28%27if%28%27lt%27n%272%29%2C%28%27n%29%2C%28%27%2B%28%27fib%2C%28%27-%27n%271%29%29%28%27fib%2C%28%27-%27n%272%29%29%29%29%29).
+## Demos 
+* [A video of the zooming behavior](https://gashlin.net/tests/ecola/zoom.mp4)
+* Pre-populated
+  * [Once upon a time...](https://gashlin.net/tests/ecola/babel/#%28'once'upon'a'time%28'there'was%29%2C%28'a%28'little%29'editor%29%28'for%2C'tree%2C'structured%2C'data%29%29)
+  * [Fibonacci](https://gashlin.net/tests/ecola/babel/#%28%27defun%27fib%28%27n%29%2C%28%27if%28%27lt%27n%272%29%2C%28%27n%29%2C%28%27%2B%28%27fib%2C%28%27-%27n%271%29%29%28%27fib%2C%28%27-%27n%272%29%29%29%29%29)
+* [Blank sheet](https://gashlin.net/tests/ecola/babel/)
 
 ## Structure
 
