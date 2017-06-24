@@ -506,9 +506,6 @@ const draw = function () {
       if (CURSOR_BEFORE_BOX && box.idx > 0) {
         const prevBox = cells[box.idx-1];
         cursorAttrs.h = Math.max(prevBox.h, cursorAttrs.h);
-      } else if (CURSOR_AFTER_BOX && box.idx + 1 < cells.length) {
-        const nextBox = cells[box.idx+1];
-        cursorAttrs.h = Math.max(nextBox.h, cursorAttrs.h);
       }
     }
 
@@ -529,26 +526,13 @@ const draw = function () {
     attrs.stroke = SELECTION_LINE_COLOR;
     CNV.context.lineWidth = SELECTED_LINE_WIDTH;
     CNV.drawRect(attrs);
-  } else if (CURSOR_AFTER_BOX && CURSOR_AFTER_BOX.under) {
-    const box = CURSOR_AFTER_BOX;
-    const cells = box.under.rows[box.rowIdx].cells;
-    let nextBox = null;
-    if (box.under && box.idx + 1 < cells.length) {
-      const nextBox = cells[box.idx + 1];
-      const attrs =
-        convertToAbsoluteXY(box, {x: nextBox.x - box.x, y: nextBox.y - box.y});
-      attrs.w = nextBox.w;
-      attrs.h = nextBox.h;
-      attrs.stroke = SELECTION_LINE_COLOR;
-
-      CNV.context.lineWidth = SELECTED_LINE_WIDTH;
-      CNV.drawRect(attrs);
-    }
   } else if (CURSOR_INSIDE_BOX) {
+    // TODO: should be a line
     const box = CURSOR_INSIDE_BOX;
-    const cursorAttrs = convertToAbsoluteXY(box, {x: box.w/4, y: box.h/4});
-    cursorAttrs.w = box.w/2;
-    cursorAttrs.h = box.h/2;
+    const cursorAttrs = convertToAbsoluteXY(box,
+      {x: (box.w - BOX_BORDER) / 2, y: BOX_BORDER});
+    cursorAttrs.w = BOX_BORDER;
+    cursorAttrs.h = box.h - BOX_BORDER * 2;
     cursorAttrs.stroke = SELECTION_LINE_COLOR;
     CNV.context.lineWidth = BOX_BORDER; 
     CNV.drawRect(cursorAttrs);
@@ -623,9 +607,21 @@ const setCursorAfterBox = function (box) {
   CURSOR_BEFORE_BOX = null;
   CURSOR_INSIDE_BOX = null;
 
-  updateKeyboard();
+  let changedToBefore = false;
 
-  requestDraw();
+  if (box.under) {
+    const cells = box.under.rows[box.rowIdx].cells;
+    if (box.idx + 1 < cells.length) {
+      setCursorBeforeBox(cells[box.idx + 1]);
+      changedToBefore = true;
+    }
+  }
+
+  if (!changedToBefore) {
+    updateKeyboard();
+
+    requestDraw();
+  }
 };
 
 const setCursorInsideBox = function (box) {
@@ -1012,13 +1008,12 @@ const keyNewBox = function () {
     newBox.rowIdx = 0;
     newBox.idx = 0;
 
-    setCursorAfterBox(newBox);
+    setCursorInsideBox(newBox);
     return;
   }
 
   const box = cursorBeforeOrAfter();
   if (!box || !box.under) {
-    // TODO: grey
     return;
   }
 
@@ -1036,16 +1031,9 @@ const keyNewBox = function () {
   setCursorInsideBox(newBox);
 };
 
-const keyHome = function () {
-};
-
-const keyEnd = function () {
-};
-
 const keyType = function () {
   let box = cursorBeforeOrAfterOrInside();
-  if (!box || !box.under) {
-      // TODO: grey out key for root?
+  if (!box || (!CURSOR_INSIDE_BOX && !box.under)) {
     return;
   }
   promptText('', function (text) {
@@ -1055,8 +1043,7 @@ const keyType = function () {
 
 const keyTypeWords = function () {
   const box = cursorBeforeOrAfterOrInside();
-  if (!box || !box.under) {
-    // TODO
+  if (!box || (!CURSOR_INSIDE_BOX && !box.under)) {
     return;
   }
   promptText('', function (text) {
@@ -1067,24 +1054,18 @@ const keyTypeWords = function () {
 const keyNewRow = function () {
   const box = cursorBeforeOrAfter();
   if (!box || !box.under) {
-    // TODO
     return;
   }
 
   const cells = box.under.rows[box.rowIdx].cells;
-  if (CURSOR_AFTER_BOX &&
-    cells.length - 1 === box.idx) {
-    // TODO
+  if (CURSOR_AFTER_BOX) {
     return;
   }
-  if (CURSOR_BEFORE_BOX && box.idx === 0) {
+  if (box.idx === 0) {
     return;
   }
 
   let split = box.idx;
-  if (CURSOR_AFTER_BOX) {
-    split ++;
-  }
 
   const first = cells.slice(0, split);
   const second = cells.slice(split);
@@ -1100,27 +1081,17 @@ const keyNewRow = function () {
 
 };
 
-const keyLeft = function () {
-};
-
-const keyRight = function () {
-};
-
 const keyDel = function () {
   const box = cursorBeforeOrAfter();
   if (!box || !box.under) {
-    // TODO
     return;
   }
 
   const cells = box.under.rows[box.rowIdx].cells;
-  if (CURSOR_AFTER_BOX &&
-    cells.length - 1 === box.idx) {
-
+  if (CURSOR_AFTER_BOX) {
     // delete a row break if possible
     if (box.rowIdx === box.under.rows.length - 1) {
       // nothing after the last row
-      // TODO: grey
       return;
     }
 
@@ -1135,13 +1106,8 @@ const keyDel = function () {
     return;
   }
 
-  let target = box;
-  if (CURSOR_AFTER_BOX) {
-    target = cells[box.idx + 1];
-  }
-
   if (cells.length === 1) {
-    // deleting the only cell in this row, thus delete the row
+    // deleting the only cell in this row, rows can't be empty so delete row
     box.under.rows.splice(box.rowIdx, 1);
 
     // TODO save somehow
@@ -1155,7 +1121,7 @@ const keyDel = function () {
   }
 
   // normal deletion
-  cells.splice(target.idx, 1);
+  cells.splice(box.idx, 1);
 
   reindexBoxes(cells);
   setCursorBeforeBox(null);
@@ -1169,13 +1135,9 @@ const keyPaste = function () {
 
 const menuCallbacks = {
   newBox: keyNewBox,
-  home: keyHome,
-  end: keyEnd,
   type: keyType,
   typeWords: keyTypeWords,
   newRow: keyNewRow,
-  left: keyLeft,
-  right: keyRight,
   del: keyDel,
   paste: keyPaste,
   save,
@@ -1185,15 +1147,39 @@ const menuCallbacks = {
 const MENU = MENUR(menuCallbacks);
 
 const updateKeyboard = function () {
-  if (CURSOR_BEFORE_BOX) {
-    MENU.setButtonsActive(['save', 'newBox', 'type']);
-  } else if (CURSOR_AFTER_BOX) {
-    MENU.setButtonsActive(['typeWords', 'newRow', 'del']);
-  } else if (CURSOR_INSIDE_BOX) {
-    MENU.setButtonsActive(['save','del']);
-  } else {
-    MENU.setButtonsActive(['save']);
+  const baBox = cursorBeforeOrAfter();
+  const baiBox = cursorBeforeOrAfterOrInside();
+
+  const nonRootBABox = !(!baBox || !baBox.under);
+  const nonRootBAIBox = !(!baiBox || !baiBox.under);
+
+  const active = []
+  let baCells = null;
+  if (baBox && baBox.under) {
+    baCells = baBox.under.rows[baBox.rowIdx].cells;
   }
+
+  active.push('save');
+  if ((CURSOR_INSIDE_BOX && CURSOR_INSIDE_BOX.rows.length === 0) ||
+      nonRootBABox) {
+    active.push('newBox');
+  }
+  if (nonRootBAIBox || CURSOR_INSIDE_BOX) {
+    active.push('type');
+  }
+  if (nonRootBAIBox || CURSOR_INSIDE_BOX) {
+    active.push('typeWords');
+  }
+  if (nonRootBABox && !CURSOR_AFTER_BOX && baBox.idx !== 0) {
+    active.push('newRow');
+  }
+  if (nonRootBABox &&
+      (!CURSOR_AFTER_BOX || baBox.rowIdx != baBox.under.rows.length - 1)) {
+    active.push('del');
+  }
+
+  MENU.setButtonsActive(active);
+
 };
 
 // main code starts here
@@ -1269,12 +1255,21 @@ GET_TOUCHY(CNV.element, {
         setCursorBeforeBox(null);
       }
     } else {
-      if (TARGET_BOX.under) {
-        setCursorBeforeBox(TARGET_BOX);
-        const sp =
-          convertToBoxXY(CURSOR_BEFORE_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
-        if (sp.x > CURSOR_BEFORE_BOX.w/2) {
-          setCursorAfterBox(CURSOR_BEFORE_BOX);
+      const sp =
+        convertToBoxXY(TARGET_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
+      // if the box is empty and not text, and the click is in the middle
+      // two 4ths (or this is root), place cursor inside
+      if (TARGET_BOX.rows.length === 0 &&
+          !(typeof TARGET_BOX.text === 'string' && TARGET_BOX.text !== '') &&
+          (!TARGET_BOX.under ||
+           (sp.x > TARGET_BOX.w/4 && sp.x < TARGET_BOX.w*3/4))) {
+        setCursorInsideBox(TARGET_BOX);
+      } else if (TARGET_BOX.under) {
+        // otherwise place the cursor at nearest end of the box
+        if (sp.x > TARGET_BOX.w/2) {
+          setCursorAfterBox(TARGET_BOX);
+        } else {
+          setCursorBeforeBox(TARGET_BOX);
         }
       }
     }
