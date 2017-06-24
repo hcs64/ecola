@@ -1384,7 +1384,7 @@ GET_TOUCHY(CNV.element, {
       Math.sqrt(Math.pow(touch1.x - touch2.x, 2) +
                 Math.pow(touch1.y - touch2.y, 2));
     TOUCH_ORIGIN = {x, y};
-    ZOOM_TARGET = findIntersectingBox(TOUCH_ORIGIN);
+    ZOOM_TARGET = findIntersectingBox(adjustForPanAndZoom(TOUCH_ORIGIN));
   },
 
   pinchMove: function (touch1, touch2) {
