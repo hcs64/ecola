@@ -142,8 +142,6 @@ const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
                                  boxes: r.cells});
           if (child) {
             return child;
-          } else {
-            console.log('missed');
           }
         }
       }
@@ -834,7 +832,6 @@ const storeCut = function (box) {
   while (CLIPBOARD.length > CLIPBOARD_MAX_LENGTH) {
     CLIPBOARD.shift();
   }
-  console.log(CLIPBOARD);
 };
 
 const promptText = function (init, msg, cb, cbc) {
@@ -1041,7 +1038,6 @@ const handleDepthChangeForDelete = function (box) {
     if (box.deepest > BOXES[0].deepest) {
       // deleted deepest
 
-      console.log('depth changed by ' + (box.deepest - BOXES[0].deepest));
       setZoom(SEMANTIC_ZOOM +
                 ZOOM_LEVEL_PIXELS * (box.deepest - BOXES[0].deepest));
     }
