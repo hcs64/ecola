@@ -1029,10 +1029,27 @@ const keyNewRow = function () {
   }
 
   const cells = box.under.rows[box.rowIdx].cells;
-  if (CURSOR_AFTER_BOX) {
-    return;
-  }
-  if (box.idx === 0) {
+  if (CURSOR_AFTER_BOX || box.idx === 0) {
+    // create a new row with one empty node
+    const newBox = createBox(null, box.under);
+    const newRow = {cells: [newBox]};
+
+    if (CURSOR_AFTER_BOX) {
+      // new row is now after cursor row
+      box.under.rows.splice(box.rowIdx + 1, 0, newRow);
+    } else {
+      // new row is now before cursor row
+      box.under.rows.splice(box.rowIdx, 0, newRow);
+    }
+
+    reindexRows(box.under.rows);
+    if (CURSOR_AFTER_BOX) {
+      setCursorBeforeBox(newBox);
+    } else {
+      setCursorBeforeBox(box);
+    }
+
+    BOX_CHANGED = true;
     return;
   }
 
@@ -1068,7 +1085,7 @@ const handleDepthChangeForDelete = function (box) {
 }
 
 const keyDel = function () {
-  const box = cursorBeforeOrAfter();
+  const box = cursorBeforeOrAfterOrInside();
   if (!box || !box.under) {
     return;
   }
@@ -1238,10 +1255,10 @@ const updateKeyboard = function () {
       !(CURSOR_INSIDE_BOX && isTaggedBox(baiBox))) {
     active.push('typeWords');
   }
-  if (nonRootBABox && !CURSOR_AFTER_BOX && baBox.idx !== 0) {
+  if (nonRootBABox) {
     active.push('newRow');
   }
-  if (nonRootBABox &&
+  if (nonRootBAIBox &&
       (!CURSOR_AFTER_BOX || baBox.rowIdx != baBox.under.rows.length - 1)) {
     active.push('del');
   }
