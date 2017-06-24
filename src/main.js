@@ -553,6 +553,7 @@ const drawClipboard = function (clipboard, cnv) {
 
   setTextAttributes(cnv);
 
+  const w = cnv.element.width;
   let y = cnv.element.height - CLIPBOARD_SPACING;
 
   for (let i = clipboard.length - 1; i >= 0; i --) {
@@ -564,7 +565,7 @@ const drawClipboard = function (clipboard, cnv) {
     setZoom(clipZoom, box, clipZoom.zoom + ZOOM_LEVEL_PIXELS);
     updateAllBoxesInner(clipZoom, box);
 
-    box.x = CLIPBOARD_SPACING;
+    box.x = (w - box.w) / 2;
     box.y = y - box.h;
 
     positions.push({miny: box.y, maxy: y, box: box});
