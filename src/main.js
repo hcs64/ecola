@@ -123,12 +123,23 @@ const findIntersectingBox = function ({x, y, boxes = BOXES, first = -1}) {
         const iby = y - b.y;
         const rxm = r.x + r.w;
         const rym = r.y + r.h;
-        if (ibx >= r.x && ibx < rxm && iby >= r.y && iby < rym) {
+        if (iby >= r.y && iby < rym) {
+          const irx = ibx - r.x;
+          const iry = iby - r.y;
           const child =
-            findIntersectingBox({x: ibx - r.x, y: iby - r.y,
-                                 boxes: r.cells});
+            findIntersectingBox({x: irx, y: iry, boxes: r.cells});
           if (child) {
             return child;
+          } else {
+            const firstChild = r.cells[0];
+            const lastChild = r.cells[r.cells.length - 1];
+
+            if (irx > -HANDLE_WIDTH / 2 && irx < 0 ) {
+              return firstChild;
+            } else if (irx > lastChild.x + lastChild.w &&
+                       irx < lastChild.x + lastChild.w + HANDLE_WIDTH / 2) {
+              return lastChild;
+            }
           }
         }
       }
