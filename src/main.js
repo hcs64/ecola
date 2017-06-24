@@ -1,7 +1,7 @@
 (function () {
 'use strict';
 
-const CNV = CNVR();
+const CNV = CNVR(document.getElementById('cnv'));
 
 let BOXES;
 let BOX_CHANGED;
@@ -14,16 +14,8 @@ let TARGET_BOX;
 let SAVE_HASH;
 let CANCEL_PROMPT;
 
-let SEMANTIC_ZOOM;
-let SHRINK_CUTOFF;
-let HANDLE_SHRINK_ROLLOFF;
-let SHRINK_ROLLOFF0;
-let SHRINK_ROLLOFF1;
-let SHRINK_ROLLOFF2;
-
+let ZOOM_STATS;
 let ZOOMING_BOX;
-let ZOOM_CHANGED;
-let LAST_ZOOM_COORDS;
 let PINCH_DISTANCE;
 let ZOOM_TARGET;
 
@@ -32,6 +24,7 @@ let CURSOR_AFTER_BOX;
 let CURSOR_INSIDE_BOX;
 
 let CLIPBOARD;
+let CLIPBOARD_CNV;
 
 const resetGlobals = function () {
   BOXES = [];
@@ -48,16 +41,8 @@ const resetGlobals = function () {
   SAVE_HASH = '#';
   CANCEL_PROMPT = null;
 
-  SEMANTIC_ZOOM = 0;
-  SHRINK_CUTOFF = 0;
-  HANDLE_SHRINK_ROLLOFF = 0;
-  SHRINK_ROLLOFF0 = 0;
-  SHRINK_ROLLOFF1 = 0;
-  SHRINK_ROLLOFF2 = 0;
-
+  ZOOM_STATS = {};
   ZOOMING_BOX = null;
-  ZOOM_CHANGED = false;
-  LAST_ZOOM_COORDS = null;
   PINCH_DISTANCE = null;
   ZOOM_TARGET = null;
 
@@ -66,6 +51,7 @@ const resetGlobals = function () {
   CURSOR_INSIDE_BOX = null;
 
   CLIPBOARD = [];
+  CLIPBOARD_CNV = null;
 };
 
 const HOLD_TIMEOUT1_MS = 500;
@@ -94,6 +80,7 @@ const PROMPT_MSG = document.getElementById('prompt-msg');
 const PROMPT = document.getElementById('prompt');
 
 const CLIPBOARD_MAX_LENGTH = 10;
+const CLIPBOARD_SPACING = 50;
 
 const OPEN_SYM = '(';
 const CLOSE_SYM = ')';
@@ -240,14 +227,14 @@ const reindexRows = function (rows) {
   }
 };
 
-const updateBoxRows = function (box, callUp = true) {
+const updateBoxRows = function (zoom, box, callUp = true) {
   // Set position for the rows of this box based on their sizes, then set the
   // size of this box from that.
   // Also calls up to update the parent box since this box's size could
   // have changed (updateRowCells on the row this box is in and updateBoxRows
   // on the parent box)
 
-  const hs = getHandleShrinkage(box);
+  const hs = getHandleShrinkage(zoom, box);
   const handle = HANDLE_WIDTH * hs;
   let w = 0;
   let h = BOX_BORDER;
@@ -261,7 +248,7 @@ const updateBoxRows = function (box, callUp = true) {
   });
 
   if (box.rows.length === 0) {
-    const s = getTextShrinkage(box);
+    const s = getTextShrinkage(zoom, box);
     if (typeof box.textWidth === 'number') {
       box.w = BOX_BORDER * 2 + (FONT_SIZE + box.textWidth) * s;
       box.h = BOX_BORDER * 2 + FONT_SIZE * 1.5 * s;
@@ -310,118 +297,117 @@ const recalculateDeepestInner = function (box, depth) {
   return deepest;
 };
 
-const recalculateDeepest = function (box) {
-  if (BOXES.length > 0) {
-    recalculateDeepestInner(BOXES[0], 0);
-    updateZoom(BOXES[0]);
-  }
+const recalculateDeepest = function (zoom, box) {
+  recalculateDeepestInner(box, 0);
+  updateZoom(zoom, box);
 };
 
-const updateAllBoxesInner = function (box) {
+const updateAllBoxesInner = function (zoom, box) {
   box.rows.forEach(function (row) {
     row.cells.forEach(function (cell) {
-      updateAllBoxesInner(cell);
+      updateAllBoxesInner(zoom, cell);
     });
     updateRowCells(row, box);
   });
-  updateBoxRows(box, false);
+  updateBoxRows(zoom, box, false);
 };
+
 const updateAllBoxes = function () {
   if (BOXES.length > 0) {
-    recalculateDeepest(BOXES[0]);
+    recalculateDeepest(ZOOM_STATS, BOXES[0]);
   }
-  BOXES.forEach(updateAllBoxesInner);
+  BOXES.forEach(b => updateAllBoxesInner(ZOOM_STATS, b));
 };
 
-const setZoom = function (newZoom, p) {
-  SEMANTIC_ZOOM = newZoom;
+const setZoom = function (zoom, root, newZoom, p) {
+  zoom.zoom = newZoom;
   if (p) {
-    LAST_ZOOM_COORDS = adjustForPanAndZoom(p);
+    zoom.lastCoords = adjustForPanAndZoom(p);
   } else {
-    LAST_ZOOM_COORDS = null;
+    zoom.lastCoords = null;
   }
-  ZOOM_CHANGED = true;
-  if (BOXES.length > 0) {
-    updateZoom(BOXES[0]);
-  }
+  zoom.changed = true;
+  updateZoom(zoom, root);
+
+  return zoom;
 }
 
-const updateZoom = function(root) {
-  if (SEMANTIC_ZOOM < -ZOOM_LEVEL_PIXELS * root.deepest) {
-    SEMANTIC_ZOOM = -ZOOM_LEVEL_PIXELS * root.deepest;
+const updateZoom = function(zoom, root) {
+  if (zoom.zoom < -ZOOM_LEVEL_PIXELS * root.deepest) {
+    zoom.zoom = -ZOOM_LEVEL_PIXELS * root.deepest;
   }
 
-  if (SEMANTIC_ZOOM < 0) {
-    const nz = SEMANTIC_ZOOM / -ZOOM_LEVEL_PIXELS;
+  if (zoom.zoom < 0) {
+    const nz = zoom.zoom / -ZOOM_LEVEL_PIXELS;
     const rnz = Math.floor(nz);
-    SHRINK_CUTOFF = root.deepest - rnz;
+    zoom.shrinkCutoff = root.deepest - rnz;
     const s = 1 - (nz - rnz);
-    HANDLE_SHRINK_ROLLOFF = s;
-    SHRINK_ROLLOFF0 = Math.max(s, SHRINK0);
-    SHRINK_ROLLOFF1 = SHRINK0 * lerp01(.25, 1, s);
-    SHRINK_ROLLOFF2 = SHRINK0 * lerp01(.0625, .25, s);
+    zoom.handleShrinkRolloff = s;
+    zoom.shrinkRolloff0 = Math.max(s, SHRINK0);
+    zoom.shrinkRolloff1 = SHRINK0 * lerp01(.25, 1, s);
+    zoom.shrinkRolloff2 = SHRINK0 * lerp01(.0625, .25, s);
   } else {
-    SEMANTIC_ZOOM = 0;
-    SHRINK_CUTOFF = root.deepest;
-    HANDLE_SHRINK_ROLLOFF = 1;
-    SHRINK_ROLLOFF0 = 1;
-    SHRINK_ROLLOFF1 = 1;
-    SHRINK_ROLLOFF2 = 1;
+    zoom.zoom = 0;
+    zoom.shrinkCutoff = root.deepest;
+    zoom.handleShrinkRolloff = 1;
+    zoom.shrinkRolloff0 = 1;
+    zoom.shrinkRolloff1 = 1;
+    zoom.shrinkRolloff2 = 1;
   }
 
   requestDraw();
 };
 
-const getHandleShrinkage = function (box, noRowBonus) {
+const getHandleShrinkage = function (zoom, box, noRowBonus) {
   let level = box.level;
   if (box.rows.length !== 0 && !noRowBonus) {
     level ++;
   }
 
-  if (level > SHRINK_CUTOFF) {
+  if (level > zoom.shrinkCutoff) {
     return 0;
-  } else if (level === SHRINK_CUTOFF) {
-    return HANDLE_SHRINK_ROLLOFF;
+  } else if (level === zoom.shrinkCutoff) {
+    return zoom.handleShrinkRolloff;
   } else {
     return 1;
   }
 
 };
 
-const getTextShrinkage = function (box, noRowBonus) {
+const getTextShrinkage = function (zoom, box, noRowBonus) {
   let level = box.level;
   if (box.rows.length !== 0 && !noRowBonus) {
     level ++;
   }
 
-  if (level > SHRINK_CUTOFF + 2) {
+  if (level > zoom.shrinkCutoff + 2) {
     return MIN_SHRINK;
-  } else if (level === SHRINK_CUTOFF + 2) {
-    return SHRINK_ROLLOFF2; 
-  } else if (level === SHRINK_CUTOFF + 1) {
-    return SHRINK_ROLLOFF1;
-  } else if (level === SHRINK_CUTOFF) {
-    return SHRINK_ROLLOFF0;
+  } else if (level === zoom.shrinkCutoff + 2) {
+    return zoom.shrinkRolloff2;
+  } else if (level === zoom.shrinkCutoff + 1) {
+    return zoom.shrinkRolloff1;
+  } else if (level === zoom.shrinkCutoff) {
+    return zoom.shrinkRolloff0;
   } else {
     return 1;
   }
 
 };
 
-const zoomToBox = function (root, box, touch) {
-  if (getHandleShrinkage(box) > TOO_SMALL_THRESH) {
+const zoomToBox = function (zoom, root, box, touch) {
+  if (getHandleShrinkage(zoom, box) > TOO_SMALL_THRESH) {
     return;
   }
   let minLevel = root.deepest - box.level;
   if (box.rows.length !== 0) {
     minLevel --;
   }
-  setZoom(-ZOOM_LEVEL_PIXELS * minLevel, touch);
+  setZoom(zoom, root, -ZOOM_LEVEL_PIXELS * minLevel, touch);
 };
 
-const zoomOut = function (root) {
-  recalculateDeepest(root);
-  setZoom(-ZOOM_LEVEL_PIXELS * root.deepest - 1, null);
+const zoomOut = function (zoom, root) {
+  recalculateDeepest(zoom, root);
+  setZoom(zoom, root, -ZOOM_LEVEL_PIXELS * root.deepest - 1, null);
 };
 
 const adjustForPanAndZoom = function ({x,y}) {
@@ -439,10 +425,10 @@ const roundLerp = function (start, end, t, tmin, tmax, round) {
   return Math.round(lerp(start, end, t, tmin, tmax) * round) / round;
 };
 
-const setTextAttributes = function () {
-  CNV.context.textAlign = 'center';
-  CNV.context.textBaseline = 'middle';
-  CNV.context.font = FONT_SIZE + 'px serif';
+const setTextAttributes = function (cnv) {
+  cnv.context.textAlign = 'center';
+  cnv.context.textBaseline = 'middle';
+  cnv.context.font = FONT_SIZE + 'px serif';
 };
 
 const requestDraw = function () {
@@ -459,17 +445,18 @@ const draw = function () {
   let zoomTarget = null;
   let zoomTargetDim = null;
 
-  if (ZOOM_CHANGED && LAST_ZOOM_COORDS) {
+  if (ZOOM_STATS.changed && ZOOM_STATS.lastCoords) {
     // collect information about where the zoom is focused before it updates,
     // so we can center the zoom there
     if (ZOOM_TARGET) {
       zoomTarget = ZOOM_TARGET;
     } else {
-      zoomTarget = findIntersectingBox(LAST_ZOOM_COORDS);
+      zoomTarget = findIntersectingBox(ZOOM_STATS.lastCoords);
       if (!zoomTarget && BOXES.length > 0) {
         const box = BOXES[0];
         zoomTarget = box;
-        LAST_ZOOM_COORDS = {x: CNV.element.width/2, y: CNV.element.height/2};
+        ZOOM_STATS.lastCoords =
+          {x: CNV.element.width/2, y: CNV.element.height/2};
       }
     }
 
@@ -482,18 +469,18 @@ const draw = function () {
   }
 
   // so much easier to just always do this
-  if (BOX_CHANGED || ZOOM_CHANGED) {
+  if (BOX_CHANGED || ZOOM_STATS.changed) {
     updateAllBoxes();
   }
   BOX_CHANGED = false;
-  ZOOM_CHANGED = false;
+  ZOOM_STATS.changed = false;
 
   if (zoomTargetDim) {
     // adjust pan to center on the zoom focus
     const {x: oldx, y: oldy, w: oldw, h: oldh} = zoomTargetDim;
     const {x: newx, y: newy} = convertToAbsoluteXY(zoomTarget, {x: 0, y: 0});
     const {w: neww, h: newh} = zoomTarget;
-    const {x: zx, y: zy}  = LAST_ZOOM_COORDS;
+    const {x: zx, y: zy}  = ZOOM_STATS.lastCoords;
     PAN_TRANSLATE.x += zx - ((zx - oldx) / oldw * neww + newx);
     PAN_TRANSLATE.y += zy - ((zy - oldy) / oldh * newh + newy);
   }
@@ -501,12 +488,14 @@ const draw = function () {
   // setup canvas context for drawing
   CNV.clear();
 
-  setTextAttributes();
+  setTextAttributes(CNV);
   CNV.enterRel({x: PAN_TRANSLATE.x + TEMP_PAN_TRANSLATE.x,
                 y: PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y});
 
-  BOXES.forEach(drawBox);
+  // draw boxes
+  BOXES.forEach(b => drawBox(CNV, ZOOM_STATS, b));
 
+  // draw cursor (except for inside cursor, done below with selection box)
   if (CURSOR_BEFORE_BOX || CURSOR_AFTER_BOX) {
     let box, cursorAttrs;
     if (CURSOR_BEFORE_BOX) {
@@ -559,46 +548,79 @@ const draw = function () {
   CNV.exitRel();
 };
 
-const drawBox = function (box, idx) {
-  CNV.enterRel({x: box.x, y: box.y});
+const drawClipboard = function (clipboard, cnv) {
+  const positions = [];
+
+  setTextAttributes(cnv);
+
+  let y = cnv.element.height - CLIPBOARD_SPACING;
+
+  for (let i = clipboard.length - 1; i >= 0; i --) {
+    const str = clipboard[i];
+    const {box} = boxFromString(str, 0, 0);
+    const clipZoom = {}
+
+    zoomOut(clipZoom, box);
+    setZoom(clipZoom, box, clipZoom.zoom + ZOOM_LEVEL_PIXELS);
+    updateAllBoxesInner(clipZoom, box);
+
+    box.x = CLIPBOARD_SPACING;
+    box.y = y - box.h;
+
+    positions.push({miny: box.y, maxy: y, box: box});
+
+    drawBox(cnv, clipZoom, box);
+
+    y -= box.h + CLIPBOARD_SPACING;
+
+    if (y < 0) {
+      break;
+    }
+  }
+
+  return positions;
+};
+
+const drawBox = function (cnv, zoom, box) {
+  cnv.enterRel({x: box.x, y: box.y});
 
   // TODO: detection of clipping, should be easy with rects to see if
   // they are fully clipped
 
   const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
-  let levelLum = roundLerp(92, 80, getHandleShrinkage(box), 1, 0, 4);
+  let levelLum = roundLerp(92, 80, getHandleShrinkage(zoom, box), 1, 0, 4);
 
   const levelHSL = `hsl(${levelHue},80%,${levelLum}%)`;
 
   const rectAttrs = {x: BOX_BORDER, y: 0, w: box.w-BOX_BORDER, h: box.h, fill: levelHSL};
 
-  CNV.drawRect(rectAttrs);
+  cnv.drawRect(rectAttrs);
 
   // draw rows, containing cells
   box.rows.forEach(function (row) {
-    CNV.enterRel({x: row.x, y: row.y});
-    row.cells.forEach(drawBox);
-    CNV.exitRel();
+    cnv.enterRel({x: row.x, y: row.y});
+    row.cells.forEach(c => drawBox(cnv, zoom, c));
+    cnv.exitRel();
   });
 
   // draw text
   if (isTaggedBox(box)) {
-    const scale = getTextShrinkage(box);
+    const scale = getTextShrinkage(zoom, box);
     if (scale > MIN_SHRINK) {
       // TODO: document this, I've already forgotten how it works
       const adj = (1-scale)/2/scale;
       // TODO: CNVR should support this without two levels, probably just
       // do saving manually
-      CNV.enterRel({zoom: scale});
-      CNV.enterRel({x: (box.w+BOX_BORDER)*adj, y: box.h*adj});
-      CNV.drawText({x: (box.w+BOX_BORDER)/2, y: box.h/2,
+      cnv.enterRel({zoom: scale});
+      cnv.enterRel({x: (box.w+BOX_BORDER)*adj, y: box.h*adj});
+      cnv.drawText({x: (box.w+BOX_BORDER)/2, y: box.h/2,
                   msg: box.text, fill: TEXT_COLOR});
-      CNV.exitRel();
-      CNV.exitRel();
+      cnv.exitRel();
+      cnv.exitRel();
     }
   }
 
-  CNV.exitRel();
+  cnv.exitRel();
 };
 
 const cursorBeforeOrAfter = function () {
@@ -761,8 +783,8 @@ const loadFromHash = function () {
         box.x = 0;
         box.y = 0;
         reindexBoxes();
-        zoomOut(box);
-        setZoom(SEMANTIC_ZOOM + ZOOM_LEVEL_PIXELS);
+        zoomOut(ZOOM_STATS, box);
+        setZoom(ZOOM_STATS, box, ZOOM_STATS.zoom + ZOOM_LEVEL_PIXELS);
         updateAllBoxes();
         box.x = (CNV.element.width - box.w)/2;
         box.y = (CNV.element.height - box.h)/2;
@@ -826,7 +848,7 @@ const save = function () {
 };
 
 const storeCut = function (box) {
-  const str = stringFromBox(box);
+  const str = stringFromBox(box)
 
   CLIPBOARD.push(str);
   while (CLIPBOARD.length > CLIPBOARD_MAX_LENGTH) {
@@ -883,7 +905,7 @@ const isTaggedBox = function (box) {
 const tagBox = function (box, text) {
   if (typeof text === 'string' && text !== '') {
     box.text = text;
-    setTextAttributes();
+    setTextAttributes(CNV);
     box.textWidth = Math.max(MIN_TEXT_WIDTH, CNV.context.measureText(text).width);
   } else {
     delete box.text;
@@ -1038,7 +1060,7 @@ const handleDepthChangeForDelete = function (box) {
     if (box.deepest > BOXES[0].deepest) {
       // deleted deepest
 
-      setZoom(SEMANTIC_ZOOM +
+      setZoom(ZOOM_STATS, BOXES[0], ZOOM_STATS.zoom +
                 ZOOM_LEVEL_PIXELS * (box.deepest - BOXES[0].deepest));
     }
   }
@@ -1075,13 +1097,14 @@ const keyDel = function () {
 
     reindexRows(box.under.rows);
 
+    storeCut(box);
+
     if (box.under.rows.length > box.rowIdx) {
       setCursorBeforeBox(box.under.rows[box.rowIdx].cells[0]);
     } else {
       setCursorBeforeBox(null);
     }
 
-    storeCut(box);
     handleDepthChangeForDelete(box);
 
     BOX_CHANGED = true;
@@ -1096,13 +1119,14 @@ const keyDel = function () {
 
   reindexBoxes(cells);
 
+  storeCut(box);
+
   if (box.idx < cells.length) {
     setCursorBeforeBox(cells[box.idx]);
   } else {
     setCursorAfterBox(cells[cells.length - 1]);
   }
 
-  storeCut(box);
   handleDepthChangeForDelete(box);
 
   BOX_CHANGED = true;
@@ -1112,6 +1136,61 @@ const keyDel = function () {
 };
 
 const keyPaste = function () {
+  CLIPBOARD_CNV = CNVR(document.getElementById('clipboard'));
+  const cnv = CLIPBOARD_CNV;
+  cnv.element.style.visibility = 'visible';
+  cnv.drawRect({x:0, y:0, w: cnv.element.width, h: cnv.element.height, fill: 'white'});
+
+  const positions = drawClipboard(CLIPBOARD, cnv);
+
+  cnv.element.addEventListener('click',function clickListener (e) {
+    CLIPBOARD_CNV = null;
+    cnv.element.removeEventListener('click', clickListener);
+    cnv.element.style.visibility = 'hidden';
+
+
+    let pasteBox = null;
+    for (let j = 0; !pasteBox && j < positions.length; j ++) {
+      if (e.pageY >= positions[j].miny && e.pageY < positions[j].maxy) {
+        pasteBox = positions[j].box;
+      }
+    }
+
+    if (pasteBox) {
+      if (CURSOR_INSIDE_BOX && !isTaggedBox(CURSOR_INSIDE_BOX)) {
+        pasteBox.under = CURSOR_INSIDE_BOX;
+        const newRow = {cells: [pasteBox]};
+        CURSOR_INSIDE_BOX.rows.push(newRow);
+        pasteBox.rowIdx = 0;
+        pasteBox.idx = 0;
+
+        BOX_CHANGED = true;
+
+        setCursorAfterBox(pasteBox);
+      } else {
+        const box = cursorBeforeOrAfter();
+        if (!box || !box.under) {
+          return;
+        }
+
+        const cells = box.under.rows[box.rowIdx].cells;
+
+        if (CURSOR_BEFORE_BOX) {
+          cells.splice(box.idx, 0, pasteBox);
+        } else {
+          cells.splice(box.idx + 1, 0, pasteBox);
+        }
+        pasteBox.under = box.under;
+        pasteBox.rowIdx = box.rowIdx;
+        reindexBoxes(cells);
+
+        BOX_CHANGED = true;
+
+        setCursorAfterBox(pasteBox);
+      }
+    }
+
+  });
 };
 
 const menuCallbacks = {
@@ -1145,6 +1224,11 @@ const updateKeyboard = function () {
       (CURSOR_INSIDE_BOX && CURSOR_INSIDE_BOX.rows.length === 0 &&
        !isTaggedBox(baiBox))) {
     active.push('newBox');
+  }
+  if (CLIPBOARD.length > 0 && (nonRootBABox ||
+      (CURSOR_INSIDE_BOX && CURSOR_INSIDE_BOX.rows.length === 0 &&
+       !isTaggedBox(CURSOR_INSIDE_BOX)))) {
+    active.push('paste');
   }
   if (nonRootBAIBox || CURSOR_INSIDE_BOX) {
     active.push('type');
@@ -1185,7 +1269,7 @@ GET_TOUCHY(CNV.element, {
     TARGET_BOX = findIntersectingBox({x, y});
 
     if (TARGET_BOX) {
-      if (getHandleShrinkage(TARGET_BOX) < TOO_SMALL_THRESH) {
+      if (getHandleShrinkage(ZOOM_STATS, TARGET_BOX) < TOO_SMALL_THRESH) {
         ZOOMING_BOX = TARGET_BOX;
         TARGET_BOX = null;
       }
@@ -1224,7 +1308,7 @@ GET_TOUCHY(CNV.element, {
       PANNING = false;
     } else if (ZOOMING_BOX) {
       if (ZOOMING_BOX.under) {
-        zoomToBox(BOXES[0], ZOOMING_BOX, TOUCH_ORIGIN);
+        zoomToBox(ZOOM_STATS, BOXES[0], ZOOMING_BOX, TOUCH_ORIGIN);
         setCursorBeforeBox(ZOOMING_BOX);
       }
       ZOOMING_BOX = null;
@@ -1284,7 +1368,7 @@ GET_TOUCHY(CNV.element, {
       Math.sqrt(Math.pow(touch1.x - touch2.x, 2) +
                 Math.pow(touch1.y - touch2.y, 2));
     TOUCH_ORIGIN = {x, y};
-    ZOOM_TARGET = findIntersectingBox(LAST_ZOOM_COORDS);
+    ZOOM_TARGET = findIntersectingBox(ZOOM_STATS.lastCoords);
   },
 
   pinchMove: function (touch1, touch2) {
@@ -1292,7 +1376,7 @@ GET_TOUCHY(CNV.element, {
       Math.sqrt(Math.pow(touch1.x - touch2.x, 2) +
                 Math.pow(touch1.y - touch2.y, 2));
     let delta = dist - PINCH_DISTANCE;
-    setZoom(SEMANTIC_ZOOM + delta, TOUCH_ORIGIN);
+    setZoom(ZOOM_STATS, BOXES[0], ZOOM_STATS.zoom + delta, TOUCH_ORIGIN);
 
     PINCH_DISTANCE = dist;
   },
@@ -1321,7 +1405,9 @@ window.addEventListener('wheel', function (e) {
     delta *= FONT_SIZE * 15;
   }
 
-  setZoom(SEMANTIC_ZOOM - delta, {x: mx, y: my});
+  if (BOXES.length > 0) {
+    setZoom(ZOOM_STATS, BOXES[0], ZOOM_STATS.zoom - delta, {x: mx, y: my});
+  }
 });
 
 window.addEventListener('hashchange', function () {

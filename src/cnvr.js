@@ -1,13 +1,12 @@
 /* exported CNVR */
 'use strict';
 
-const CNVR = function () {
+const CNVR = function (element) {
 
-let cnv = null;
+let cnv = element;
 let ctx = null;
 
 const makeCanvas = function () {
-  cnv = document.getElementById('cnv');
   ctx = cnv.getContext('2d');
 
  setupCanvas();

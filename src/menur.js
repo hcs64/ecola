@@ -9,11 +9,12 @@ const MENUR = (function (cb) {
   const MENU_BUTTONS = [
     [
       {t: 'Save', cmd: cb.save, name: 'save'},
+      {t: 'Paste', cmd: cb.paste, name: 'paste'},
       {t: 'Node', cmd: cb.newBox, name: 'newBox'},
       {t: 'Text', cmd: cb.type, name: 'type'},
       {t: 'Words', cmd: cb.typeWords, name: 'typeWords'},
-      {t: 'Return', cmd: cb.newRow, name: 'newRow'},
-      {t: 'Delete', cmd: cb.del, name: 'del'},
+      {t: 'Row', cmd: cb.newRow, name: 'newRow'},
+      {t: 'Cut', cmd: cb.del, name: 'del'},
     ],
   ];
   return {
@@ -25,9 +26,9 @@ const MENUR = (function (cb) {
 
       const menuArray = MENU_BUTTONS;
 
-      for (let i = 0; i < 1; i++) {
+      for (let i = 0; i < menuArray.length; i++) {
         const tr = document.createElement('tr');
-        for (let j = 0; j < 6; j++) {
+        for (let j = 0; j < menuArray[i].length; j++) {
           const td = document.createElement('td');
 
           const button = menuArray[i][j];
