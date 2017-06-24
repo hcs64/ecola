@@ -618,7 +618,7 @@ const setCursorAfterBox = function (box) {
 
   let changedToBefore = false;
 
-  if (box.under) {
+  if (box && box.under) {
     const cells = box.under.rows[box.rowIdx].cells;
     if (box.idx + 1 < cells.length) {
       setCursorBeforeBox(cells[box.idx + 1]);
@@ -1303,10 +1303,10 @@ GET_TOUCHY(CNV.element, {
       const sp =
         convertToBoxXY(TARGET_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
       // if the box is empty, and the click is in the middle
-      // two 4ths (or this is root), place cursor inside
+      // third (or this is root), place cursor inside
       if (TARGET_BOX.rows.length === 0 &&
           (!TARGET_BOX.under ||
-           (sp.x > TARGET_BOX.w/4 && sp.x < TARGET_BOX.w*3/4))) {
+           (sp.x > TARGET_BOX.w/3 && sp.x < TARGET_BOX.w*2/3))) {
         setCursorInsideBox(TARGET_BOX);
       } else if (TARGET_BOX.under) {
         // otherwise place the cursor at nearest end of the box
