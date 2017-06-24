@@ -566,7 +566,7 @@ const drawBox = function (box, idx) {
   });
 
   // draw text
-  if (typeof box.text === 'string' && box.text.length > 0) {
+  if (isTaggedBox(box)) {
     const scale = getTextShrinkage(box);
     if (scale > MIN_SHRINK) {
       const adj = (1-scale)/2/scale;
@@ -777,7 +777,7 @@ const escapeSaveString = function (str) {
 };
 
 const stringFromBox = function (box) {
-  if (typeof box.text === 'string' && box.text !== '') {
+  if (isTaggedBox(box)) {
     return ID_SYM + escapeSaveString(box.text);
   }
 
@@ -850,6 +850,10 @@ const cancelPromptText = function (submitHandler) {
   PROMPT_FORM.removeEventListener('submit', submitHandler);
   CANCEL_PROMPT = null;
 };
+
+const isTaggedBox = function (box) {
+  return typeof box.text === 'string' && box.text !== '';
+}
 
 const tagBox = function (box, text) {
   if (typeof text === 'string' && text !== '') {
@@ -1038,6 +1042,15 @@ const keyType = function () {
   if (!box || (!CURSOR_INSIDE_BOX && !box.under)) {
     return;
   }
+
+  if (CURSOR_INSIDE_BOX && isTaggedBox(box)) {
+      promptText(box.text, 'Edit text', function (text) {
+        tagBox(box, text);
+        setCursorInsideBox(box);
+      });
+      return;
+  }
+
   promptText('', 'Enter text', function (text) {
     insertTaggedBox(text);
   });
@@ -1045,9 +1058,16 @@ const keyType = function () {
 
 const keyTypeWords = function () {
   const box = cursorBeforeOrAfterOrInside();
-  if (!box || (!CURSOR_INSIDE_BOX && !box.under)) {
+  if (!box) {
     return;
   }
+  if (CURSOR_INSIDE_BOX && isTaggedBox(box)) {
+    return;
+  }
+  if (!CURSOR_INSIDE_BOX && !box.under) {
+    return;
+  }
+
   promptText('', 'Enter text, space separated', function (text) {
     text.split(' ').forEach(insertTaggedBox);
   });
@@ -1162,14 +1182,16 @@ const updateKeyboard = function () {
   }
 
   active.push('save');
-  if ((CURSOR_INSIDE_BOX && CURSOR_INSIDE_BOX.rows.length === 0) ||
-      nonRootBABox) {
+  if (nonRootBABox ||
+      (CURSOR_INSIDE_BOX && CURSOR_INSIDE_BOX.rows.length === 0 &&
+       !isTaggedBox(baiBox))) {
     active.push('newBox');
   }
   if (nonRootBAIBox || CURSOR_INSIDE_BOX) {
     active.push('type');
   }
-  if (nonRootBAIBox || CURSOR_INSIDE_BOX) {
+  if ((nonRootBAIBox || CURSOR_INSIDE_BOX) &&
+      !(CURSOR_INSIDE_BOX && isTaggedBox(baiBox))) {
     active.push('typeWords');
   }
   if (nonRootBABox && !CURSOR_AFTER_BOX && baBox.idx !== 0) {
@@ -1259,10 +1281,9 @@ GET_TOUCHY(CNV.element, {
     } else {
       const sp =
         convertToBoxXY(TARGET_BOX, adjustForPanAndZoom(TOUCH_ORIGIN));
-      // if the box is empty and not text, and the click is in the middle
+      // if the box is empty, and the click is in the middle
       // two 4ths (or this is root), place cursor inside
       if (TARGET_BOX.rows.length === 0 &&
-          !(typeof TARGET_BOX.text === 'string' && TARGET_BOX.text !== '') &&
           (!TARGET_BOX.under ||
            (sp.x > TARGET_BOX.w/4 && sp.x < TARGET_BOX.w*3/4))) {
         setCursorInsideBox(TARGET_BOX);
