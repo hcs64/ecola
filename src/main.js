@@ -442,29 +442,23 @@ const draw = function () {
 
   // TODO: we could get here with boxes in a bad state before updateAllBoxes,
   // everything before that should be made to expect it
-  let zoomTarget = null;
   let zoomTargetDim = null;
+  let rootDim = null;
+
+  if (BOXES.length > 0) {
+    rootDim = convertToAbsoluteXY(BOXES[0], {x: BOXES[0].w/2, y: BOXES[0].h/2});
+  }
 
   if (ZOOM_STATS.changed && ZOOM_STATS.lastCoords) {
     // collect information about where the zoom is focused before it updates,
     // so we can center the zoom there
-    if (ZOOM_TARGET) {
-      zoomTarget = ZOOM_TARGET;
-    } else {
-      zoomTarget = findIntersectingBox(ZOOM_STATS.lastCoords);
-      if (!zoomTarget && BOXES.length > 0) {
-        const box = BOXES[0];
-        zoomTarget = box;
-        ZOOM_STATS.lastCoords =
-          {x: CNV.element.width/2, y: CNV.element.height/2};
-      }
-    }
 
-    if (zoomTarget &&
-        typeof zoomTarget.w === 'number' && typeof zoomTarget.h === 'number') {
-      zoomTargetDim = convertToAbsoluteXY(zoomTarget, {x: 0, y: 0});
-      zoomTargetDim.w = zoomTarget.w;
-      zoomTargetDim.h = zoomTarget.h;
+    if (ZOOM_TARGET &&
+        typeof ZOOM_TARGET.w === 'number' &&
+        typeof ZOOM_TARGET.h === 'number') {
+      zoomTargetDim = convertToAbsoluteXY(ZOOM_TARGET, {x: 0, y: 0});
+      zoomTargetDim.w = ZOOM_TARGET.w;
+      zoomTargetDim.h = ZOOM_TARGET.h;
     }
   }
 
@@ -478,11 +472,15 @@ const draw = function () {
   if (zoomTargetDim) {
     // adjust pan to center on the zoom focus
     const {x: oldx, y: oldy, w: oldw, h: oldh} = zoomTargetDim;
-    const {x: newx, y: newy} = convertToAbsoluteXY(zoomTarget, {x: 0, y: 0});
-    const {w: neww, h: newh} = zoomTarget;
+    const {x: newx, y: newy} = convertToAbsoluteXY(ZOOM_TARGET, {x: 0, y: 0});
+    const {w: neww, h: newh} = ZOOM_TARGET;
     const {x: zx, y: zy}  = ZOOM_STATS.lastCoords;
     PAN_TRANSLATE.x += zx - ((zx - oldx) / oldw * neww + newx);
     PAN_TRANSLATE.y += zy - ((zy - oldy) / oldh * newh + newy);
+  } else if (rootDim) {
+    const rootNow = convertToAbsoluteXY(BOXES[0], {x: BOXES[0].w/2, y: BOXES[0].h/2});
+    PAN_TRANSLATE.x += rootDim.x - rootNow.x;
+    PAN_TRANSLATE.y += rootDim.y - rootNow.y;
   }
 
   // setup canvas context for drawing
@@ -1386,7 +1384,7 @@ GET_TOUCHY(CNV.element, {
       Math.sqrt(Math.pow(touch1.x - touch2.x, 2) +
                 Math.pow(touch1.y - touch2.y, 2));
     TOUCH_ORIGIN = {x, y};
-    ZOOM_TARGET = findIntersectingBox(ZOOM_STATS.lastCoords);
+    ZOOM_TARGET = findIntersectingBox(TOUCH_ORIGIN);
   },
 
   pinchMove: function (touch1, touch2) {
@@ -1424,6 +1422,7 @@ window.addEventListener('wheel', function (e) {
   }
 
   if (BOXES.length > 0) {
+    ZOOM_TARGET = findIntersectingBox({x: mx, y: my});
     setZoom(ZOOM_STATS, BOXES[0], ZOOM_STATS.zoom - delta, {x: mx, y: my});
   }
 });
