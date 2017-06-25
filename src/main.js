@@ -66,6 +66,7 @@ const MIN_TEXT_WIDTH = HANDLE_WIDTH;
 const LEVEL_HUES = [[240],[0]];
 const TEXT_COLOR = '#000000';
 const FONT_SIZE = 18;
+const PIXELS_PER_LINE_DELTA = 12;
 const ZOOM_LEVEL_PIXELS = 80;
 const SHRINK0 = 1/2;
 const MIN_SHRINK = SHRINK0/16;
@@ -73,6 +74,7 @@ const TOO_SMALL_THRESH = 0.75;
 
 const SELECTION_LINE_COLOR = '#808080';
 const SELECTED_LINE_WIDTH = 2;
+const CURSOR_LINE_WIDTH = 4;
 
 const PROMPT_INPUT = document.getElementById('prompt-input');
 const PROMPT_FORM = document.getElementById('prompt-form');
@@ -417,6 +419,7 @@ const zoomToBox = function (zoom, root, box, touch) {
 };
 
 const zoomOut = function (zoom, root) {
+  zoom.zoom = 0;
   recalculateDeepest(zoom, root);
   setZoom(zoom, root, -ZOOM_LEVEL_PIXELS * root.deepest - 1, null);
 };
@@ -501,56 +504,53 @@ const draw = function () {
   CNV.enterRel({x: PAN_TRANSLATE.x + TEMP_PAN_TRANSLATE.x,
                 y: PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y});
 
+  const dims = {x: -(PAN_TRANSLATE.x + TEMP_PAN_TRANSLATE.x),
+                y: -(PAN_TRANSLATE.y + TEMP_PAN_TRANSLATE.y),
+                w: CNV.element.width,
+                h: CNV.element.height};
+
   // draw boxes
-  BOXES.forEach(b => drawBox(CNV, ZOOM_STATS, b));
+  BOXES.forEach(b => drawBox(CNV, ZOOM_STATS, b, dims));
 
   // draw cursor (except for inside cursor, done below with selection box)
   if (CURSOR_BEFORE_BOX || CURSOR_AFTER_BOX) {
-    let box, cursorAttrs;
+    let box, pos, height;
     if (CURSOR_BEFORE_BOX) {
       box = CURSOR_BEFORE_BOX;
-      cursorAttrs = convertToAbsoluteXY(box, {x: 0, y: 0});
+      pos = convertToAbsoluteXY(box, {x: 0, y: 0});
     } else {
       box = CURSOR_AFTER_BOX;
-      cursorAttrs = convertToAbsoluteXY(box, {x: box.w, y: 0});
+      pos = convertToAbsoluteXY(box, {x: box.w, y: 0});
     }
-    cursorAttrs.w = BOX_BORDER;
-    cursorAttrs.h = box.h;
+    height = box.h;
     if (box.under) {
       const cells = box.under.rows[box.rowIdx].cells;
       if (CURSOR_BEFORE_BOX && box.idx > 0) {
         const prevBox = cells[box.idx-1];
-        cursorAttrs.h = Math.max(prevBox.h, cursorAttrs.h);
+        height = Math.max(prevBox.h, height);
       }
     }
 
-    cursorAttrs.stroke = SELECTION_LINE_COLOR;
-    CNV.context.lineWidth = BOX_BORDER;
+    CNV.context.lineWidth = CURSOR_LINE_WIDTH;
 
     // TODO: should just be a drawline
-    CNV.drawRect(cursorAttrs);
+    CNV.drawRectStroke(pos.x, pos.y, BOX_BORDER, height, SELECTION_LINE_COLOR);
   }
 
   // draw selection box (shows where deletion or insertion will take place,
   // when this coincides with an existing box)
   if (CURSOR_BEFORE_BOX) {
     const box = CURSOR_BEFORE_BOX;
-    const attrs = convertToAbsoluteXY(box, {x: BOX_BORDER, y: 0});
-    attrs.w = box.w - BOX_BORDER;
-    attrs.h = box.h;
-    attrs.stroke = SELECTION_LINE_COLOR;
+    const pos = convertToAbsoluteXY(box, {x: BOX_BORDER, y: 0});
     CNV.context.lineWidth = SELECTED_LINE_WIDTH;
-    CNV.drawRect(attrs);
+    CNV.drawRectStroke(pos.x, pos.y, box.w - BOX_BORDER, box.h, SELECTION_LINE_COLOR);
   } else if (CURSOR_INSIDE_BOX) {
     // TODO: should be a line
     const box = CURSOR_INSIDE_BOX;
-    const cursorAttrs = convertToAbsoluteXY(box,
+    const pos = convertToAbsoluteXY(box,
       {x: box.w / 2, y: BOX_BORDER});
-    cursorAttrs.w = BOX_BORDER;
-    cursorAttrs.h = box.h - BOX_BORDER * 2;
-    cursorAttrs.stroke = SELECTION_LINE_COLOR;
-    CNV.context.lineWidth = BOX_BORDER; 
-    CNV.drawRect(cursorAttrs);
+    CNV.context.lineWidth = CURSOR_LINE_WIDTH;
+    CNV.drawRectStroke(pos.x, pos.y, BOX_BORDER, box.h - BOX_BORDER * 2, SELECTION_LINE_COLOR);
   }
 
 
@@ -579,7 +579,7 @@ const drawClipboard = function (clipboard, cnv) {
 
     positions.push({miny: box.y, maxy: y, box: box});
 
-    drawBox(cnv, clipZoom, box);
+    drawBox(cnv, clipZoom, box, null);
 
     y -= box.h + CLIPBOARD_SPACING;
 
@@ -591,27 +591,47 @@ const drawClipboard = function (clipboard, cnv) {
   return positions;
 };
 
-const drawBox = function (cnv, zoom, box) {
-  cnv.enterRel({x: box.x, y: box.y});
+const drawBox = function (cnv, zoom, box, dims) {
+  if (dims &&
+      (Math.min(dims.x + dims.w, box.x + box.w)-Math.max(dims.x, box.x) <= 0 ||
+       Math.min(dims.y + dims.h, box.y + box.h)-Math.max(dims.y, box.y) <= 0)) {
+    return;
+  }
+  let olddims;
 
-  // TODO: detection of clipping, should be easy with rects to see if
-  // they are fully clipped
+  if (dims) {
+    olddims = {x: dims.x, y: dims.y};
+    dims.x -= box.x;
+    dims.y -= box.y;
+  }
+  cnv.enterRel({x: box.x, y: box.y});
 
   const levelHue = LEVEL_HUES[box.level % LEVEL_HUES.length];
   let levelLum = roundLerp(92, 80, getHandleShrinkage(zoom, box), 1, 0, 4);
 
   const levelHSL = `hsl(${levelHue},80%,${levelLum}%)`;
 
-  const rectAttrs = {x: BOX_BORDER, y: 0, w: box.w-BOX_BORDER, h: box.h, fill: levelHSL};
-
-  cnv.drawRect(rectAttrs);
+  cnv.drawRectFill(BOX_BORDER, 0, box.w-BOX_BORDER, box.h, levelHSL);
 
   // draw rows, containing cells
-  box.rows.forEach(function (row) {
-    cnv.enterRel({x: row.x, y: row.y});
-    row.cells.forEach(c => drawBox(cnv, zoom, c));
-    cnv.exitRel();
-  });
+  if (dims) {
+    box.rows.forEach(function (row) {
+      const rowolddims = {x: dims.x, y: dims.y};
+      cnv.enterRel({x: row.x, y: row.y});
+      dims.x -= row.x;
+      dims.y -= row.y;
+      row.cells.forEach(c => drawBox(cnv, zoom, c, dims));
+      cnv.exitRel();
+      dims.x = rowolddims.x;
+      dims.y = rowolddims.y;
+    });
+  } else {
+    box.rows.forEach(function (row) {
+      cnv.enterRel({x: row.x, y: row.y});
+      row.cells.forEach(c => drawBox(cnv, zoom, c, null));
+      cnv.exitRel();
+    });
+  }
 
   // draw text
   if (isTaggedBox(box)) {
@@ -631,6 +651,10 @@ const drawBox = function (cnv, zoom, box) {
   }
 
   cnv.exitRel();
+  if (dims) {
+    dims.x = olddims.x;
+    dims.y = olddims.y;
+  }
 };
 
 const cursorBeforeOrAfter = function () {
@@ -1149,7 +1173,7 @@ const keyPaste = function () {
   CLIPBOARD_CNV = CNVR(document.getElementById('clipboard'));
   const cnv = CLIPBOARD_CNV;
   cnv.element.style.visibility = 'visible';
-  cnv.drawRect({x:0, y:0, w: cnv.element.width, h: cnv.element.height, fill: 'white'});
+  cnv.drawRectFill(0, 0, cnv.element.width, cnv.element.height, 'white');
 
   const positions = drawClipboard(CLIPBOARD, cnv);
 
@@ -1409,14 +1433,14 @@ window.addEventListener('wheel', function (e) {
   let delta = e.deltaY;
 
   if (e.deltaMode === 0x01) {
-    delta *= FONT_SIZE * 1.5;
+    delta *= PIXELS_PER_LINE_DELTA;
   }
   if (e.deltaMode === 0x02) {
-    delta *= FONT_SIZE * 15;
+    delta *= PIXELS_PER_LINE_DELTA * 10;
   }
 
   if (BOXES.length > 0) {
-    ZOOM_TARGET = findIntersectingBox({x: mx, y: my});
+    ZOOM_TARGET = findIntersectingBox(adjustForPanAndZoom({x: mx, y: my}));
     setZoom(ZOOM_STATS, BOXES[0], ZOOM_STATS.zoom - delta, {x: mx, y: my});
   }
 });
