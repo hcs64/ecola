@@ -8,6 +8,7 @@ This is an experiment in creating tree structures with a touch screen.
 * Pre-populated trees
   * [Once upon a time...](https://gashlin.net/tests/ecola/babel/#%28'once'upon'a'time%28'there'was%29%2C%28'a%28'little%29'editor%29%28'for%2C'tree%2C'structured%2C'data%29%29)
   * [Fibonacci](https://gashlin.net/tests/ecola/babel/#%28%27defun%27fib%28%27n%29%2C%28%27if%28%27lt%27n%272%29%2C%28%27n%29%2C%28%27%2B%28%27fib%2C%28%27-%27n%271%29%29%28%27fib%2C%28%27-%27n%272%29%29%29%29%29)
+  * [J-Bob](https://gashlin.net/tests/ecola/langston/dist/), from [The Little Prover](http://the-little-prover.github.io/) (warning, large!)
 * [Empty document](https://gashlin.net/tests/ecola/babel/)
 
 ## Structure
