@@ -21,17 +21,14 @@ const clear = function () {
   ctx.clearRect(0, 0, cnv.width, cnv.height);
 };
 
-const drawRect = function ({x, y, w, h, stroke, fill}) {
-  if (fill) {
-    ctx.fillStyle = fill;
-    ctx.fillRect(x, y, w, h);
-  }
+const drawRectStroke = function (x, y, w, h, stroke) {
+  ctx.strokeStyle = stroke;
+  ctx.strokeRect(x, y, w, h);
+};
 
-  if (stroke) {
-    ctx.strokeStyle = stroke;
-    ctx.strokeRect(x, y, w, h);
-  }
-
+const drawRectFill = function (x, y, w, h, fill) {
+  ctx.fillStyle = fill;
+  ctx.fillRect(x, y, w, h);
 };
 
 const drawText = function ({x, y, msg, fill}) {
@@ -66,7 +63,8 @@ return {
   context: ctx,
   clear,
 
-  drawRect,
+  drawRectStroke,
+  drawRectFill,
 
   drawText,
 
